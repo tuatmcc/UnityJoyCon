@@ -1,8 +1,8 @@
 use std::env;
-// use std::path::PathBuf;
+use std::path::PathBuf;
 
 fn main() {
-    // let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
     let mut cfg = cmake::Config::new("externals/hidapi");
@@ -52,4 +52,17 @@ fn main() {
             println!("cargo:rustc-link-lib=static=hidapi");
         }
     }
+
+    let bindings = bindgen::Builder::default()
+        .header("externals/hidapi/hidapi/hidapi.h")
+        .allowlist_file("externals/hidapi/hidapi/hidapi.h")
+        .derive_default(true)
+        .size_t_is_usize(true)
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .generate()
+        .expect("Unable to generate bindings");
+
+    bindings
+        .write_to_file(out_dir.join("bindings.rs"))
+        .expect("Unable to write bindings");
 }
