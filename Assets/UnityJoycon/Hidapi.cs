@@ -61,7 +61,7 @@ namespace UnityJoycon
 
                 if (device == null) throw GetError();
 
-                return new HidDevice(device);
+                return new HidDevice(device, info);
             }
         }
 
@@ -80,10 +80,12 @@ namespace UnityJoycon
     {
         private readonly unsafe hid_device_* _device;
         private bool _disposedValue;
+        public readonly HidDeviceInfo Info;
 
-        internal unsafe HidDevice(hid_device_* device)
+        internal unsafe HidDevice(hid_device_* device, HidDeviceInfo info)
         {
             _device = device;
+            Info = info;
         }
 
         public void Dispose()

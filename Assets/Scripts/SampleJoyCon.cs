@@ -14,6 +14,7 @@ public class SampleJoyCon : MonoBehaviour
     [SerializeField] private Renderer plusOrMinusButton;
     [SerializeField] private Renderer stickButton;
     [SerializeField] private Renderer homeOrCaptureButton;
+    [SerializeField] private Transform stickAxis;
 
     private HidDevice _device;
     private Hidapi _hidapi;
@@ -42,28 +43,30 @@ public class SampleJoyCon : MonoBehaviour
 
         _joycon.Update();
 
-        upButton.material.color = _joycon.GetButton(JoyConButton.DpadUp) ? Color.green : Color.black;
-        downButton.material.color = _joycon.GetButton(JoyConButton.DpadDown) ? Color.green : Color.black;
-        leftButton.material.color = _joycon.GetButton(JoyConButton.DpadLeft) ? Color.green : Color.black;
-        rightButton.material.color = _joycon.GetButton(JoyConButton.DpadRight) ? Color.green : Color.black;
-        slButton.material.color = _joycon.GetButton(JoyConButton.SL) ? Color.green : Color.black;
-        srButton.material.color = _joycon.GetButton(JoyConButton.SR) ? Color.green : Color.black;
-        if (_joycon.Type == JoyConType.Right)
+        upButton.material.color = _joycon.Button.DpadUp ? Color.green : Color.black;
+        downButton.material.color = _joycon.Button.DpadDown ? Color.green : Color.black;
+        leftButton.material.color = _joycon.Button.DpadLeft ? Color.green : Color.black;
+        rightButton.material.color = _joycon.Button.DpadRight ? Color.green : Color.black;
+        slButton.material.color = _joycon.Button.SL ? Color.green : Color.black;
+        srButton.material.color = _joycon.Button.SR ? Color.green : Color.black;
+        if (_joycon.Type == Type.Right)
         {
-            rOrLButton.material.color = _joycon.GetButton(JoyConButton.R) ? Color.green : Color.black;
-            zrOrZlButton.material.color = _joycon.GetButton(JoyConButton.ZR) ? Color.green : Color.black;
-            plusOrMinusButton.material.color = _joycon.GetButton(JoyConButton.Plus) ? Color.green : Color.black;
-            stickButton.material.color = _joycon.GetButton(JoyConButton.StickRight) ? Color.green : Color.black;
-            homeOrCaptureButton.material.color = _joycon.GetButton(JoyConButton.Home) ? Color.green : Color.black;
+            rOrLButton.material.color = _joycon.Button.R ? Color.green : Color.black;
+            zrOrZlButton.material.color = _joycon.Button.ZR ? Color.green : Color.black;
+            plusOrMinusButton.material.color = _joycon.Button.Plus ? Color.green : Color.black;
+            stickButton.material.color = _joycon.Button.StickR ? Color.green : Color.black;
+            homeOrCaptureButton.material.color = _joycon.Button.Home ? Color.green : Color.black;
         }
         else
         {
-            rOrLButton.material.color = _joycon.GetButton(JoyConButton.L) ? Color.green : Color.black;
-            zrOrZlButton.material.color = _joycon.GetButton(JoyConButton.ZL) ? Color.green : Color.black;
-            plusOrMinusButton.material.color = _joycon.GetButton(JoyConButton.Minus) ? Color.green : Color.black;
-            stickButton.material.color = _joycon.GetButton(JoyConButton.StickLeft) ? Color.green : Color.black;
-            homeOrCaptureButton.material.color = _joycon.GetButton(JoyConButton.Capture) ? Color.green : Color.black;
+            rOrLButton.material.color = _joycon.Button.L ? Color.green : Color.black;
+            zrOrZlButton.material.color = _joycon.Button.ZL ? Color.green : Color.black;
+            plusOrMinusButton.material.color = _joycon.Button.Minus ? Color.green : Color.black;
+            stickButton.material.color = _joycon.Button.StickL ? Color.green : Color.black;
+            homeOrCaptureButton.material.color = _joycon.Button.Capture ? Color.green : Color.black;
         }
+
+        stickAxis.localPosition = new Vector3(_joycon.Stick.X * 0.5f, stickAxis.localPosition.y, _joycon.Stick.Y * -0.5f);
     }
 
     private void OnDestroy()
