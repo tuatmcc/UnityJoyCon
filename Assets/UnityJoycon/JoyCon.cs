@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 using Vector2 = System.Numerics.Vector2;
 
@@ -19,9 +20,7 @@ namespace UnityJoycon
         private bool _disposedValue;
         private byte _packetCounter;
         public readonly Button Button = new Button();
-        public Vector2 Stick = new Vector2();
-
-        private readonly StickCalibration _stickCalibration = new StickCalibration();
+        public readonly Stick Stick = new Stick();
 
         public readonly Type Type;
 
@@ -41,17 +40,17 @@ namespace UnityJoycon
             // Calibration
             Calibration();
             // Connect
-            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x01 });
-            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x02 });
-            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x03 });
+            SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x01 });
+            SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x02 });
+            SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x03 });
             // Set player lights
             SendSubCommand(SubCommandType.SetPlayerLights, new byte[] { 0b0000_0001 });
             // Enable IMU
-            // SendSubCommand(SubCommandType.EnableImu, new byte[] { 0x01 });
+            SendSubCommand(SubCommandType.EnableImu, new byte[] { 0x01 });
             // Subscribe sensor data
             SendSubCommand(SubCommandType.SetInputReportMode, new byte[] { 0x30 });
             // Enable vibration
-            // SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x01 });
+            SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x01 });
         }
 
         public void Dispose()
@@ -59,11 +58,11 @@ namespace UnityJoycon
             if (_disposedValue) return;
 
             // Disable vibration
-            // SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x00 });
+            SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x00 });
             // Unsubscribe sensor data
             SendSubCommand(SubCommandType.SetInputReportMode, new byte[] { 0x3f });
             // Disable IMU
-            // SendSubCommand(SubCommandType.EnableImu, new byte[] { 0x00 });
+            SendSubCommand(SubCommandType.EnableImu, new byte[] { 0x00 });
             // Turn off player lights
             // SendSubCommand(SubCommandType.SetPlayerLights, new byte[] { 0x00 });
 
@@ -100,83 +99,28 @@ namespace UnityJoycon
         private void UpdateButtonsAndSticks(ReadOnlySpan<byte> data)
         {
             var rawStickData = data.Slice(Type == Type.Right ? 9 : 6, 3);
-
-            var rawX = (ushort)(rawStickData[0] | ((rawStickData[1] & 0xf) << 8));
-            var rawY = (ushort)(rawStickData[1] >> 4 | rawStickData[2] << 4);
-
-            var diffX = rawX - _stickCalibration.CenterX;
-            var diffY = rawY - _stickCalibration.CenterY;
-
-            if (diffX > 0) Stick.X = (float)diffX / _stickCalibration.MaxX;
-            else Stick.X = (float)diffX / _stickCalibration.MinX;
-
-            if (diffY > 0) Stick.Y = (float)diffY / _stickCalibration.MaxY;
-            else Stick.Y = (float)diffY / _stickCalibration.MinY;
-
-            if (Type == Type.Right)
-            {
-                var rightData = data[3];
-                Button.DpadUp = (rightData & 0x02) != 0;
-                Button.DpadDown = (rightData & 0x04) != 0;
-                Button.DpadLeft = (rightData & 0x01) != 0;
-                Button.DpadRight = (rightData & 0x08) != 0;
-                Button.SL = (rightData & 0x10) != 0;
-                Button.SR = (rightData & 0x20) != 0;
-                Button.R = (rightData & 0x40) != 0;
-                Button.ZR = (rightData & 0x80) != 0;
-            }
-            else
-            {
-                var leftData = data[5];
-                Button.DpadUp = (leftData & 0x02) != 0;
-                Button.DpadDown = (leftData & 0x01) != 0;
-                Button.DpadLeft = (leftData & 0x08) != 0;
-                Button.DpadRight = (leftData & 0x04) != 0;
-                Button.SL = (leftData & 0x10) != 0;
-                Button.SR = (leftData & 0x20) != 0;
-                Button.L = (leftData & 0x40) != 0;
-                Button.ZL = (leftData & 0x80) != 0;
-            }
-
-            var sharedData = data[4];
-            Button.Minus = (sharedData & 0x01) != 0;
-            Button.Plus = (sharedData & 0x02) != 0;
-            Button.StickR = (sharedData & 0x04) != 0;
-            Button.StickL = (sharedData & 0x08) != 0;
-            Button.Home = (sharedData & 0x10) != 0;
-            Button.Capture = (sharedData & 0x20) != 0;
+            Stick.Update(rawStickData);
+            
+            var buttonData = data.Slice(3, 3);
+            Button.Update(buttonData, Type);
         }
 
         private void Calibration()
         {
-            var stickCalibrationData = ReadSpi(Type == Type.Right ? 0x801du : 0x8012u, 9);
-            var foundUserCalibration = stickCalibrationData.Any(b => b != 0xff);
-            // ユーザーのキャリブレーション設定が保存されていない場合は、工場出荷時のキャリブレーションデータを使用する
-            if (!foundUserCalibration)
+            // ユーザーのキャリブレーション設定を読み込む
+            var stickCalData = ReadSpi(Type == Type.Right ? 0x801du : 0x8012u, 9);
+            var foundUserStickCalData = stickCalData.Any(b => b != 0xff);
+            // ユーザーのキャリブレーション設定が保存されていない場合
+            if (!foundUserStickCalData)
             {
-                stickCalibrationData = ReadSpi(Type == Type.Right ? 0x6046u : 0x603du, 9);
+                // 工場出荷時のキャリブレーション設定を読み込む
+                stickCalData = ReadSpi(Type == Type.Right ? 0x6046u : 0x603du, 9);
             }
-
-            if (Type == Type.Right)
-            {
-                _stickCalibration.CenterX =
-                    (ushort)((stickCalibrationData[1] << 8) & 0xf00 | stickCalibrationData[0]);
-                _stickCalibration.CenterY = (ushort)((stickCalibrationData[2] << 4) | (stickCalibrationData[1] >> 4));
-                _stickCalibration.MinX = (ushort)((stickCalibrationData[4] << 8) & 0xf00 | stickCalibrationData[3]);
-                _stickCalibration.MinY = (ushort)((stickCalibrationData[5] << 4) | (stickCalibrationData[4] >> 4));
-                _stickCalibration.MaxX = (ushort)((stickCalibrationData[7] << 8) & 0xf00 | stickCalibrationData[6]);
-                _stickCalibration.MaxY = (ushort)((stickCalibrationData[8] << 4) | (stickCalibrationData[7] >> 4));
-            }
-            else
-            {
-                _stickCalibration.MaxX = (ushort)(((stickCalibrationData[1] << 8) & 0xf00) | stickCalibrationData[0]);
-                _stickCalibration.MaxY = (ushort)((stickCalibrationData[2] << 4) | (stickCalibrationData[1] >> 4));
-                _stickCalibration.CenterX =
-                    (ushort)((stickCalibrationData[4] << 8) & 0xf00 | stickCalibrationData[3]);
-                _stickCalibration.CenterY = (ushort)((stickCalibrationData[5] << 4) | (stickCalibrationData[4] >> 4));
-                _stickCalibration.MinX = (ushort)((stickCalibrationData[7] << 8) & 0xf00 | stickCalibrationData[6]);
-                _stickCalibration.MinY = (ushort)((stickCalibrationData[8] << 4) | (stickCalibrationData[7] >> 4));
-            }
+            Stick.SetCalibration(stickCalData, Type);
+            
+            // スティックのデッドゾーンを読み込む
+            var stickParamData = ReadSpi(Type == Type.Right ? 0x6098u : 0x6086u, 18);
+            Stick.SetDeadZone(stickParamData);
         }
 
         private byte[] ReceiveRaw()
@@ -218,33 +162,129 @@ namespace UnityJoycon
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     public record Button
     {
-        public bool DpadUp { get; internal set; }
-        public bool DpadDown { get; internal set; }
-        public bool DpadLeft { get; internal set; }
-        public bool DpadRight { get; internal set; }
-        public bool Plus { get; internal set; }
-        public bool Minus { get; internal set; }
-        public bool Home { get; internal set; }
-        public bool Capture { get; internal set; }
-        public bool StickL { get; internal set; }
-        public bool StickR { get; internal set; }
-        public bool SL { get; internal set; }
-        public bool SR { get; internal set; }
-        public bool L { get; internal set; }
-        public bool R { get; internal set; }
-        public bool ZL { get; internal set; }
-        public bool ZR { get; internal set; }
+        public bool DpadUp { get; private set; }
+        public bool DpadDown { get; private set; }
+        public bool DpadLeft { get; private set; }
+        public bool DpadRight { get; private set; }
+        public bool Plus { get; private set; }
+        public bool Minus { get; private set; }
+        public bool Home { get; private set; }
+        public bool Capture { get; private set; }
+        public bool StickL { get; private set; }
+        public bool StickR { get; private set; }
+        public bool SL { get; private set; }
+        public bool SR { get; private set; }
+        public bool L { get; private set; }
+        public bool R { get; private set; }
+        public bool ZL { get; private set; }
+        public bool ZR { get; private set; }
+
+        internal void Update(ReadOnlySpan<byte> buttonData, Type type)
+        {
+            switch (type)
+            {
+                case Type.Right:
+                    DpadUp = (buttonData[0] & 0x02) != 0;
+                    DpadDown = (buttonData[0] & 0x04) != 0;
+                    DpadLeft = (buttonData[0] & 0x01) != 0;
+                    DpadRight = (buttonData[0] & 0x08) != 0;
+                    SL = (buttonData[0] & 0x10) != 0;
+                    SR = (buttonData[0] & 0x20) != 0;
+                    R = (buttonData[0] & 0x40) != 0;
+                    ZR = (buttonData[0] & 0x80) != 0;
+                    break;
+                case Type.Left:
+                    DpadUp = (buttonData[2] & 0x02) != 0;
+                    DpadDown = (buttonData[2] & 0x01) != 0;
+                    DpadLeft = (buttonData[2] & 0x08) != 0;
+                    DpadRight = (buttonData[2] & 0x04) != 0;
+                    SL = (buttonData[2] & 0x10) != 0;
+                    SR = (buttonData[2] & 0x20) != 0;
+                    L = (buttonData[2] & 0x40) != 0;
+                    ZL = (buttonData[2] & 0x80) != 0;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type), type, null);
+            }
+
+            Minus = (buttonData[1] & 0x01) != 0;
+            Plus = (buttonData[1] & 0x02) != 0;
+            StickR = (buttonData[1] & 0x04) != 0;
+            StickL = (buttonData[1] & 0x08) != 0;
+            Home = (buttonData[1] & 0x10) != 0;
+            Capture = (buttonData[1] & 0x20) != 0;
+        }
     }
 
-    internal record StickCalibration
+    public record Stick
     {
-        public ushort MinX;
-        public ushort MaxX;
-        public ushort CenterX;
-        public ushort MinY;
-        public ushort MaxY;
-        public ushort CenterY;
-        public ushort DeadZone;
+        private ushort _minX;
+        private ushort _maxX;
+        private ushort _centerX;
+        
+        private ushort _minY;
+        private ushort _maxY;
+        private ushort _centerY;
+        
+        private ushort _deadZone;
+
+        public float X { get; private set; }
+        public float Y { get; private set; }
+
+        internal void SetCalibration(ReadOnlySpan<byte> calData, Type type)
+        {
+            var rawData = new []
+            {
+                (ushort)((calData[1] << 8) & 0xf00 | calData[0]),
+                (ushort)((calData[2] << 4) | (calData[1] >> 4)),
+                (ushort)((calData[4] << 8) & 0xf00 | calData[3]),
+                (ushort)((calData[5] << 4) | (calData[4] >> 4)),
+                (ushort)((calData[7] << 8) & 0xf00 | calData[6]),
+                (ushort)((calData[8] << 4) | (calData[7] >> 4)),
+            };
+
+            switch (type)
+            {
+                case Type.Right:
+                    _centerX = rawData[0];
+                    _centerY = rawData[1];
+                    _minX = rawData[2];
+                    _minY = rawData[3];
+                    _maxX = rawData[4];
+                    _maxY = rawData[5];
+                    break;
+                case Type.Left:
+                    _maxX = rawData[0];
+                    _maxY = rawData[1];
+                    _centerX = rawData[2];
+                    _centerY = rawData[3];
+                    _minX = rawData[4];
+                    _minY = rawData[5];
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type), type, null);
+            }
+        }
+
+        internal void SetDeadZone(ReadOnlySpan<byte> stickParamData)
+        {
+            _deadZone = (ushort)((stickParamData[4] << 8) & 0xf00 | stickParamData[3]);
+        }
+
+        internal void Update(ReadOnlySpan<byte> stickData)
+        {
+            var rawX = (ushort)(stickData[0] | ((stickData[1] & 0xf) << 8));
+            var rawY = (ushort)(stickData[1] >> 4 | stickData[2] << 4);
+            
+            var diffX = rawX - _centerX;
+            var diffY = rawY - _centerY;
+            
+            // if (Math.Abs(diffX) < _deadZone) diffX = 0;
+            // if (Math.Abs(diffY) < _deadZone) diffY = 0;
+            
+            X = diffX > 0 ? (float)diffX / _maxX : (float)diffX / _minX;
+            Y = diffY > 0 ? (float)diffY / _maxY : (float)diffY / _minY;
+        }
     }
 
     internal enum SubCommandType
