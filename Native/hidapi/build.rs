@@ -1,12 +1,10 @@
 use std::env;
-use std::path::PathBuf;
 
 fn main() {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
     let mut cfg = cmake::Config::new("externals/hidapi");
-    cfg.very_verbose(true);
+    // cfg.very_verbose(true);
 
     // Cargoのビルドプロファイルに合わせる
     if env::var("PROFILE").map(|p| p == "debug").unwrap_or(false) {
@@ -32,9 +30,11 @@ fn main() {
     // 各OSに合わせてリンクするライブラリを指定
     match target_os.as_str() {
         "macos" => {
+            // println!("cargo:rustc-cfg=hidapi");
             println!("cargo:rustc-link-lib=static=hidapi");
             println!("cargo:rustc-link-lib=framework=IOKit");
             println!("cargo:rustc-link-lib=framework=CoreFoundation");
+            // println!("cargo:rustc-link-lib=framework=AppKit");
         }
         "linux" => {
             println!("cargo:rustc-link-lib=static=hidapi-hidraw");
@@ -63,6 +63,20 @@ fn main() {
         .expect("Unable to generate bindings");
 
     bindings
-        .write_to_file(out_dir.join("bindings.rs"))
+        .write_to_file("src/ffi.rs")
         .expect("Unable to write bindings");
+
+    csbindgen::Builder::default()
+        .input_bindgen_file("src/ffi.rs")
+        .rust_file_header("use super::ffi;")
+        .rust_method_type_path("ffi")
+        .csharp_dll_name("hidapi")
+        .csharp_namespace("UnityJoycon")
+        .csharp_class_name("NativeMethods")
+        .csharp_entry_point_prefix("csbindgen_")
+        .generate_to_file(
+            "src/csbindgen.rs",
+            "../../Assets/UnityJoycon/NativeMethods.cs",
+        )
+        .expect("Failed to generate C# file");
 }
