@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Vector3 = System.Numerics.Vector3;
 
 namespace UnityJoycon
 {
@@ -13,6 +14,7 @@ namespace UnityJoycon
 
         private readonly byte[] _defaultRumbleData = { 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40 };
         private readonly HidDevice _device;
+        private readonly Imu _imu = new();
         public readonly Button Button = new();
         public readonly Stick Stick = new();
 
@@ -37,9 +39,9 @@ namespace UnityJoycon
             // Calibration
             Calibration();
             // Connect
-            SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x01 });
-            SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x02 });
-            SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x03 });
+            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x01 });
+            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x02 });
+            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x03 });
             // Set player lights
             SendSubCommand(SubCommandType.SetPlayerLights, new byte[] { 0b0000_0001 });
             // Enable IMU
@@ -49,6 +51,8 @@ namespace UnityJoycon
             // Enable vibration
             SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x01 });
         }
+
+        public ImuSample[] ImuSamples => _imu.Samples;
 
         public void Dispose()
         {
@@ -100,6 +104,8 @@ namespace UnityJoycon
 
             var buttonData = data.Slice(3, 3);
             Button.Update(buttonData, Type);
+
+            _imu.UpdateImu(data);
         }
 
         private void Calibration()
@@ -113,9 +119,16 @@ namespace UnityJoycon
                 stickCalData = ReadSpi(Type == Type.Right ? 0x6046u : 0x603du, 9);
             Stick.SetCalibration(stickCalData, Type);
 
-            // スティックのデッドゾーンを読み込む
+            // スティックのパラメータを読み込む
             var stickParamData = ReadSpi(Type == Type.Right ? 0x6098u : 0x6086u, 18);
             Stick.SetDeadZone(stickParamData);
+
+            // 工場出荷時のIMUのキャリブレーション設定を読み込む
+            // TODO: ユーザーのキャリブレーション設定を読み込む
+            var imuCalData = ReadSpi(0x6020u, 24);
+            // IMUのパラメータを読み込む
+            var imuParamData = ReadSpi(0x6080u, 6);
+            _imu.SetCalibration(imuCalData, imuParamData);
         }
 
         private byte[] ReceiveRaw()
@@ -278,6 +291,161 @@ namespace UnityJoycon
             X = diffX > 0 ? (float)diffX / _maxX : (float)diffX / _minX;
             Y = diffY > 0 ? (float)diffY / _maxY : (float)diffY / _minY;
         }
+    }
+
+    internal class Imu
+    {
+        // 16bit符号付き整数をG単位と度/秒単位に変換するための係数
+        internal const float AccLsbToG = 0.000244f; // 16000 / 65535 / 1000;
+        internal const float GyroLsbToDps = 0.070f; // 4588 / 65535;
+
+        private ImuCalibration _calibration;
+        public ImuSample[] Samples { get; private set; } = Array.Empty<ImuSample>();
+
+        private static short ReadInt16(ReadOnlySpan<byte> buffer)
+        {
+            return (short)(buffer[0] | (buffer[1] << 8));
+        }
+
+        internal void SetCalibration(ReadOnlySpan<byte> calData, ReadOnlySpan<byte> paramData)
+        {
+            var accOriginX = ReadInt16(calData.Slice(0, 2));
+            var accOriginY = ReadInt16(calData.Slice(2, 2));
+            var accOriginZ = ReadInt16(calData.Slice(4, 2));
+            var accCoeffX = ReadInt16(calData.Slice(6, 2));
+            var accCoeffY = ReadInt16(calData.Slice(8, 2));
+            var accCoeffZ = ReadInt16(calData.Slice(10, 2));
+            var gyroOffsetX = ReadInt16(calData.Slice(12, 2));
+            var gyroOffsetY = ReadInt16(calData.Slice(14, 2));
+            var gyroOffsetZ = ReadInt16(calData.Slice(16, 2));
+            var gyroCoeffX = ReadInt16(calData.Slice(18, 2));
+            var gyroCoeffY = ReadInt16(calData.Slice(20, 2));
+            var gyroCoeffZ = ReadInt16(calData.Slice(22, 2));
+
+            var accHorizontalOffsetX = ReadInt16(paramData.Slice(0, 2));
+            var accHorizontalOffsetY = ReadInt16(paramData.Slice(2, 2));
+            var accHorizontalOffsetZ = ReadInt16(paramData.Slice(4, 2));
+
+            _calibration = new ImuCalibration
+            {
+                AccX = new AccCalAxis
+                {
+                    Origin = accOriginX,
+                    HorizontalOffset = accHorizontalOffsetX,
+                    Coeff = accCoeffX
+                },
+                AccY = new AccCalAxis
+                {
+                    Origin = accOriginY,
+                    HorizontalOffset = accHorizontalOffsetY,
+                    Coeff = accCoeffY
+                },
+                AccZ = new AccCalAxis
+                {
+                    Origin = accOriginZ,
+                    HorizontalOffset = accHorizontalOffsetZ,
+                    Coeff = accCoeffZ
+                },
+                GyroX = new AccGyroAxis
+                {
+                    Offset = gyroOffsetX,
+                    Coeff = gyroCoeffX
+                },
+                GyroY = new AccGyroAxis
+                {
+                    Offset = gyroOffsetY,
+                    Coeff = gyroCoeffY
+                },
+                GyroZ = new AccGyroAxis
+                {
+                    Offset = gyroOffsetZ,
+                    Coeff = gyroCoeffZ
+                }
+            };
+        }
+
+        internal void UpdateImu(ReadOnlySpan<byte> data,
+            bool levelToFlatSurface = false)
+        {
+            var out3 = new ImuSample[3];
+
+            // 加速度係数: 1.0 / (coeff - origin) * 4.0
+            var accCoeffX = 1f / (_calibration.AccX.Coeff - _calibration.AccX.Origin) * 4f;
+            var accCoeffY = 1f / (_calibration.AccY.Coeff - _calibration.AccY.Origin) * 4f;
+            var accCoeffZ = 1f / (_calibration.AccZ.Coeff - _calibration.AccZ.Origin) * 4f;
+
+            // ジャイロ係数: 936 / (coeff - offset) (70 mdps/digit換算)
+            var gyroCoeffX = 936f / (_calibration.GyroX.Coeff - _calibration.GyroX.Offset);
+            var gyroCoeffY = 936f / (_calibration.GyroY.Coeff - _calibration.GyroY.Offset);
+            var gyroCoeffZ = 936f / (_calibration.GyroZ.Coeff - _calibration.GyroZ.Offset);
+
+            var baseIdx = 13;
+            for (var i = 0; i < 3; i++)
+            {
+                var ax = ReadInt16(data.Slice(baseIdx + i * 12 + 0, 2));
+                var ay = ReadInt16(data.Slice(baseIdx + i * 12 + 2, 2));
+                var az = ReadInt16(data.Slice(baseIdx + i * 12 + 4, 2));
+                var gx = ReadInt16(data.Slice(baseIdx + i * 12 + 6, 2));
+                var gy = ReadInt16(data.Slice(baseIdx + i * 12 + 8, 2));
+                var gz = ReadInt16(data.Slice(baseIdx + i * 12 + 10, 2));
+
+                // ズレを補正する場合はオフセットを適用
+                if (levelToFlatSurface)
+                {
+                    ax = (short)(ax - _calibration.AccX.HorizontalOffset);
+                    ay = (short)(ay - _calibration.AccY.HorizontalOffset);
+                    az = (short)(az - _calibration.AccZ.HorizontalOffset);
+                }
+
+                // 加速度[G]
+                var accG = new Vector3(
+                    ax * accCoeffX,
+                    ay * accCoeffY,
+                    az * accCoeffZ
+                );
+
+                // 角速度[deg/s] バイアス除去+係数
+                var gyroDps = new Vector3(
+                    (gx - _calibration.GyroX.Offset) * gyroCoeffX,
+                    (gy - _calibration.GyroY.Offset) * gyroCoeffY,
+                    (gz - _calibration.GyroZ.Offset) * gyroCoeffZ
+                );
+
+                out3[i] = new ImuSample
+                {
+                    AccG = accG,
+                    GyroDps = gyroDps
+                };
+            }
+
+            Samples = out3;
+        }
+
+        // センサーのキャリブレーションデータ
+        private struct AccCalAxis
+        {
+            internal short Origin; // 完全水平状態のときの値
+            internal short HorizontalOffset; // 完全水平状態からのオフセット(JoyConは突起があるため)
+            internal short Coeff; // 感度調整用の係数
+        }
+
+        private struct AccGyroAxis
+        {
+            internal short Offset; // 完全静止状態のときの値
+            internal short Coeff; // 感度調整用の係数
+        }
+
+        private struct ImuCalibration
+        {
+            internal AccCalAxis AccX, AccY, AccZ;
+            internal AccGyroAxis GyroX, GyroY, GyroZ;
+        }
+    }
+
+    public struct ImuSample
+    {
+        public Vector3 AccG; // G
+        public Vector3 GyroDps; // deg/s
     }
 
     internal enum SubCommandType

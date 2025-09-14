@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityJoycon;
 
@@ -15,6 +16,8 @@ public class SampleJoyCon : MonoBehaviour
     [SerializeField] private Renderer stickButton;
     [SerializeField] private Renderer homeOrCaptureButton;
     [SerializeField] private Transform stickAxis;
+    [SerializeField] private TMP_Text accText;
+    [SerializeField] private TMP_Text gyroText;
 
     private HidDevice _device;
     private Hidapi _hidapi;
@@ -66,7 +69,20 @@ public class SampleJoyCon : MonoBehaviour
             homeOrCaptureButton.material.color = _joycon.Button.Capture ? Color.green : Color.black;
         }
 
-        stickAxis.localPosition = new Vector3(_joycon.Stick.X * 0.5f, stickAxis.localPosition.y, _joycon.Stick.Y * -0.5f);
+        stickAxis.localPosition =
+            new Vector3(_joycon.Stick.X * 0.5f, stickAxis.localPosition.y, _joycon.Stick.Y * -0.5f);
+
+        if (_joycon.ImuSamples is { Length: > 0 })
+        {
+            var imu = _joycon.ImuSamples[0];
+            accText.SetText($"Acc: {imu.AccG.X:F2}, {imu.AccG.Y:F2}, {imu.AccG.Z:F2}");
+            gyroText.SetText($"Gyro: {imu.GyroDps.X:F2}, {imu.GyroDps.Y:F2}, {imu.GyroDps.Z:F2}");
+        }
+        else
+        {
+            gyroText.SetText("Gyro: N/A");
+            accText.SetText("Acc: N/A");
+        }
     }
 
     private void OnDestroy()
