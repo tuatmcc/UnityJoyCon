@@ -1,9 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Unity.VisualScripting;
-using UnityEngine;
-using Vector2 = System.Numerics.Vector2;
 
 namespace UnityJoycon
 {
@@ -16,13 +13,13 @@ namespace UnityJoycon
 
         private readonly byte[] _defaultRumbleData = { 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40 };
         private readonly HidDevice _device;
+        public readonly Button Button = new();
+        public readonly Stick Stick = new();
+
+        public readonly Type Type;
 
         private bool _disposedValue;
         private byte _packetCounter;
-        public readonly Button Button = new Button();
-        public readonly Stick Stick = new Stick();
-
-        public readonly Type Type;
 
         public JoyCon(HidDevice device)
         {
@@ -100,7 +97,7 @@ namespace UnityJoycon
         {
             var rawStickData = data.Slice(Type == Type.Right ? 9 : 6, 3);
             Stick.Update(rawStickData);
-            
+
             var buttonData = data.Slice(3, 3);
             Button.Update(buttonData, Type);
         }
@@ -112,12 +109,10 @@ namespace UnityJoycon
             var foundUserStickCalData = stickCalData.Any(b => b != 0xff);
             // ユーザーのキャリブレーション設定が保存されていない場合
             if (!foundUserStickCalData)
-            {
                 // 工場出荷時のキャリブレーション設定を読み込む
                 stickCalData = ReadSpi(Type == Type.Right ? 0x6046u : 0x603du, 9);
-            }
             Stick.SetCalibration(stickCalData, Type);
-            
+
             // スティックのデッドゾーンを読み込む
             var stickParamData = ReadSpi(Type == Type.Right ? 0x6098u : 0x6086u, 18);
             Stick.SetDeadZone(stickParamData);
@@ -156,7 +151,7 @@ namespace UnityJoycon
     public enum Type
     {
         Left,
-        Right,
+        Right
     }
 
     [SuppressMessage("ReSharper", "InconsistentNaming")]
@@ -218,29 +213,27 @@ namespace UnityJoycon
 
     public record Stick
     {
-        private ushort _minX;
-        private ushort _maxX;
         private ushort _centerX;
-        
-        private ushort _minY;
-        private ushort _maxY;
         private ushort _centerY;
-        
         private ushort _deadZone;
+        private ushort _maxX;
+        private ushort _maxY;
+        private ushort _minX;
+        private ushort _minY;
 
         public float X { get; private set; }
         public float Y { get; private set; }
 
         internal void SetCalibration(ReadOnlySpan<byte> calData, Type type)
         {
-            var rawData = new []
+            var rawData = new[]
             {
-                (ushort)((calData[1] << 8) & 0xf00 | calData[0]),
+                (ushort)(((calData[1] << 8) & 0xf00) | calData[0]),
                 (ushort)((calData[2] << 4) | (calData[1] >> 4)),
-                (ushort)((calData[4] << 8) & 0xf00 | calData[3]),
+                (ushort)(((calData[4] << 8) & 0xf00) | calData[3]),
                 (ushort)((calData[5] << 4) | (calData[4] >> 4)),
-                (ushort)((calData[7] << 8) & 0xf00 | calData[6]),
-                (ushort)((calData[8] << 4) | (calData[7] >> 4)),
+                (ushort)(((calData[7] << 8) & 0xf00) | calData[6]),
+                (ushort)((calData[8] << 4) | (calData[7] >> 4))
             };
 
             switch (type)
@@ -268,20 +261,20 @@ namespace UnityJoycon
 
         internal void SetDeadZone(ReadOnlySpan<byte> stickParamData)
         {
-            _deadZone = (ushort)((stickParamData[4] << 8) & 0xf00 | stickParamData[3]);
+            _deadZone = (ushort)(((stickParamData[4] << 8) & 0xf00) | stickParamData[3]);
         }
 
         internal void Update(ReadOnlySpan<byte> stickData)
         {
             var rawX = (ushort)(stickData[0] | ((stickData[1] & 0xf) << 8));
-            var rawY = (ushort)(stickData[1] >> 4 | stickData[2] << 4);
-            
+            var rawY = (ushort)((stickData[1] >> 4) | (stickData[2] << 4));
+
             var diffX = rawX - _centerX;
             var diffY = rawY - _centerY;
-            
-            // if (Math.Abs(diffX) < _deadZone) diffX = 0;
-            // if (Math.Abs(diffY) < _deadZone) diffY = 0;
-            
+
+            if (Math.Abs(diffX) < _deadZone) diffX = 0;
+            if (Math.Abs(diffY) < _deadZone) diffY = 0;
+
             X = diffX > 0 ? (float)diffX / _maxX : (float)diffX / _minX;
             Y = diffY > 0 ? (float)diffY / _maxY : (float)diffY / _minY;
         }
