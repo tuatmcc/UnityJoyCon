@@ -1,7 +1,7 @@
+#nullable enable
+
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Vector3 = System.Numerics.Vector3;
 
 namespace UnityJoycon
 {
@@ -14,11 +14,9 @@ namespace UnityJoycon
 
         private readonly byte[] _defaultRumbleData = { 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40 };
         private readonly HidDevice _device;
-        private readonly Imu _imu = new();
-        public readonly Button Button = new();
-        public readonly Stick Stick = new();
 
         public readonly Type Type;
+        private Calibration _calibration = null!;
 
         private bool _disposedValue;
         private byte _packetCounter;
@@ -37,7 +35,7 @@ namespace UnityJoycon
             // Input report mode
             SendSubCommand(SubCommandType.SetInputReportMode, new byte[] { 0x3f });
             // Calibration
-            Calibration();
+            UpdateCalibration();
             // Connect
             // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x01 });
             // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x02 });
@@ -52,7 +50,7 @@ namespace UnityJoycon
             SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x01 });
         }
 
-        public ImuSample[] ImuSamples => _imu.Samples;
+        public State? State { get; private set; }
 
         public void Dispose()
         {
@@ -74,9 +72,10 @@ namespace UnityJoycon
         {
             var data = ReceiveRaw();
             if (data.Length == 0) return;
-            if (data[0] != 0x30 && data[0] != 0x21) return; // Ignore non-standard input reports
+            if (data[0] is not (0x30 or 0x31 or 0x32 or 0x33)) return; // IMUの含まれる標準レポート以外は無視
 
-            UpdateButtonsAndSticks(data);
+            var report = new StandardReport(data);
+            State = new State(report, _calibration, Type);
         }
 
         private byte[] SendSubCommand(SubCommandType cmdType, Span<byte> cmdData)
@@ -97,38 +96,30 @@ namespace UnityJoycon
             return res.AsSpan(0, (int)len).ToArray();
         }
 
-        private void UpdateButtonsAndSticks(ReadOnlySpan<byte> data)
-        {
-            var rawStickData = data.Slice(Type == Type.Right ? 9 : 6, 3);
-            Stick.Update(rawStickData);
-
-            var buttonData = data.Slice(3, 3);
-            Button.Update(buttonData, Type);
-
-            _imu.UpdateImu(data);
-        }
-
-        private void Calibration()
+        private void UpdateCalibration()
         {
             // ユーザーのキャリブレーション設定を読み込む
-            var stickCalData = ReadSpi(Type == Type.Right ? 0x801du : 0x8012u, 9);
+            var stickCalData = ReadSpi(SpiAddresses.GetStickUserCalibrationAddress(Type), 9);
             var foundUserStickCalData = stickCalData.Any(b => b != 0xff);
             // ユーザーのキャリブレーション設定が保存されていない場合
             if (!foundUserStickCalData)
                 // 工場出荷時のキャリブレーション設定を読み込む
-                stickCalData = ReadSpi(Type == Type.Right ? 0x6046u : 0x603du, 9);
-            Stick.SetCalibration(stickCalData, Type);
+                stickCalData = ReadSpi(SpiAddresses.GetStickFactoryCalibrationAddress(Type), 9);
 
             // スティックのパラメータを読み込む
-            var stickParamData = ReadSpi(Type == Type.Right ? 0x6098u : 0x6086u, 18);
-            Stick.SetDeadZone(stickParamData);
+            var stickParamData = ReadSpi(SpiAddresses.GetStickParametersAddress(Type), 18);
 
-            // 工場出荷時のIMUのキャリブレーション設定を読み込む
-            // TODO: ユーザーのキャリブレーション設定を読み込む
-            var imuCalData = ReadSpi(0x6020u, 24);
+
+            // ユーザーのIMUのキャリブレーション設定を読み込む
+            // メモ: -0.24, -0.10, -0.30付近で静止
+            // TODO: 工場出荷時のIMUのキャリブレーション設定を読み込む
+            // メモ: 0.24, -0.73, -1.16付近で静止
+            var imuCalData = ReadSpi(SpiAddresses.ImuFactoryCalibration, 24);
+
             // IMUのパラメータを読み込む
-            var imuParamData = ReadSpi(0x6080u, 6);
-            _imu.SetCalibration(imuCalData, imuParamData);
+            var imuParamData = ReadSpi(SpiAddresses.ImuParameters, 6);
+
+            _calibration = CalibrationParser.Parse(stickCalData, stickParamData, imuCalData, imuParamData, Type);
         }
 
         private byte[] ReceiveRaw()
@@ -167,288 +158,53 @@ namespace UnityJoycon
         Right
     }
 
-    [SuppressMessage("ReSharper", "InconsistentNaming")]
-    public record Button
+    public static class SpiAddresses
     {
-        public bool DpadUp { get; private set; }
-        public bool DpadDown { get; private set; }
-        public bool DpadLeft { get; private set; }
-        public bool DpadRight { get; private set; }
-        public bool Plus { get; private set; }
-        public bool Minus { get; private set; }
-        public bool Home { get; private set; }
-        public bool Capture { get; private set; }
-        public bool StickL { get; private set; }
-        public bool StickR { get; private set; }
-        public bool SL { get; private set; }
-        public bool SR { get; private set; }
-        public bool L { get; private set; }
-        public bool R { get; private set; }
-        public bool ZL { get; private set; }
-        public bool ZR { get; private set; }
+        private const uint LeftStickUserCalibration = 0x8012U;
+        private const uint RightStickUserCalibration = 0x801dU;
 
-        internal void Update(ReadOnlySpan<byte> buttonData, Type type)
+        private const uint LeftStickFactoryCalibration = 0x603dU;
+        private const uint RightStickFactoryCalibration = 0x6046U;
+
+        private const uint LeftStickParameters = 0x6086U;
+        private const uint RightStickParameters = 0x6098U;
+
+        public const uint ImuFactoryCalibration = 0x6020U;
+        public const uint ImuUserCalibration = 0x8028U;
+        public const uint ImuParameters = 0x6080U;
+
+        public static uint GetStickUserCalibrationAddress(Type type)
         {
-            switch (type)
+            return type switch
             {
-                case Type.Right:
-                    DpadUp = (buttonData[0] & 0x02) != 0;
-                    DpadDown = (buttonData[0] & 0x04) != 0;
-                    DpadLeft = (buttonData[0] & 0x01) != 0;
-                    DpadRight = (buttonData[0] & 0x08) != 0;
-                    SL = (buttonData[0] & 0x10) != 0;
-                    SR = (buttonData[0] & 0x20) != 0;
-                    R = (buttonData[0] & 0x40) != 0;
-                    ZR = (buttonData[0] & 0x80) != 0;
-                    break;
-                case Type.Left:
-                    DpadUp = (buttonData[2] & 0x02) != 0;
-                    DpadDown = (buttonData[2] & 0x01) != 0;
-                    DpadLeft = (buttonData[2] & 0x08) != 0;
-                    DpadRight = (buttonData[2] & 0x04) != 0;
-                    SL = (buttonData[2] & 0x10) != 0;
-                    SR = (buttonData[2] & 0x20) != 0;
-                    L = (buttonData[2] & 0x40) != 0;
-                    ZL = (buttonData[2] & 0x80) != 0;
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(type), type, null);
-            }
-
-            Minus = (buttonData[1] & 0x01) != 0;
-            Plus = (buttonData[1] & 0x02) != 0;
-            StickR = (buttonData[1] & 0x04) != 0;
-            StickL = (buttonData[1] & 0x08) != 0;
-            Home = (buttonData[1] & 0x10) != 0;
-            Capture = (buttonData[1] & 0x20) != 0;
-        }
-    }
-
-    public record Stick
-    {
-        private ushort _centerX;
-        private ushort _centerY;
-        private ushort _deadZone;
-        private ushort _maxX;
-        private ushort _maxY;
-        private ushort _minX;
-        private ushort _minY;
-
-        public float X { get; private set; }
-        public float Y { get; private set; }
-
-        internal void SetCalibration(ReadOnlySpan<byte> calData, Type type)
-        {
-            var rawData = new[]
-            {
-                (ushort)(((calData[1] << 8) & 0xf00) | calData[0]),
-                (ushort)((calData[2] << 4) | (calData[1] >> 4)),
-                (ushort)(((calData[4] << 8) & 0xf00) | calData[3]),
-                (ushort)((calData[5] << 4) | (calData[4] >> 4)),
-                (ushort)(((calData[7] << 8) & 0xf00) | calData[6]),
-                (ushort)((calData[8] << 4) | (calData[7] >> 4))
-            };
-
-            switch (type)
-            {
-                case Type.Right:
-                    _centerX = rawData[0];
-                    _centerY = rawData[1];
-                    _minX = rawData[2];
-                    _minY = rawData[3];
-                    _maxX = rawData[4];
-                    _maxY = rawData[5];
-                    break;
-                case Type.Left:
-                    _maxX = rawData[0];
-                    _maxY = rawData[1];
-                    _centerX = rawData[2];
-                    _centerY = rawData[3];
-                    _minX = rawData[4];
-                    _minY = rawData[5];
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(type), type, null);
-            }
-        }
-
-        internal void SetDeadZone(ReadOnlySpan<byte> stickParamData)
-        {
-            _deadZone = (ushort)(((stickParamData[4] << 8) & 0xf00) | stickParamData[3]);
-        }
-
-        internal void Update(ReadOnlySpan<byte> stickData)
-        {
-            var rawX = (ushort)(stickData[0] | ((stickData[1] & 0xf) << 8));
-            var rawY = (ushort)((stickData[1] >> 4) | (stickData[2] << 4));
-
-            var diffX = rawX - _centerX;
-            var diffY = rawY - _centerY;
-
-            if (Math.Abs(diffX) < _deadZone) diffX = 0;
-            if (Math.Abs(diffY) < _deadZone) diffY = 0;
-
-            X = diffX > 0 ? (float)diffX / _maxX : (float)diffX / _minX;
-            Y = diffY > 0 ? (float)diffY / _maxY : (float)diffY / _minY;
-        }
-    }
-
-    internal class Imu
-    {
-        // 16bit符号付き整数をG単位と度/秒単位に変換するための係数
-        internal const float AccLsbToG = 0.000244f; // 16000 / 65535 / 1000;
-        internal const float GyroLsbToDps = 0.070f; // 4588 / 65535;
-
-        private ImuCalibration _calibration;
-        public ImuSample[] Samples { get; private set; } = Array.Empty<ImuSample>();
-
-        private static short ReadInt16(ReadOnlySpan<byte> buffer)
-        {
-            return (short)(buffer[0] | (buffer[1] << 8));
-        }
-
-        internal void SetCalibration(ReadOnlySpan<byte> calData, ReadOnlySpan<byte> paramData)
-        {
-            var accOriginX = ReadInt16(calData.Slice(0, 2));
-            var accOriginY = ReadInt16(calData.Slice(2, 2));
-            var accOriginZ = ReadInt16(calData.Slice(4, 2));
-            var accCoeffX = ReadInt16(calData.Slice(6, 2));
-            var accCoeffY = ReadInt16(calData.Slice(8, 2));
-            var accCoeffZ = ReadInt16(calData.Slice(10, 2));
-            var gyroOffsetX = ReadInt16(calData.Slice(12, 2));
-            var gyroOffsetY = ReadInt16(calData.Slice(14, 2));
-            var gyroOffsetZ = ReadInt16(calData.Slice(16, 2));
-            var gyroCoeffX = ReadInt16(calData.Slice(18, 2));
-            var gyroCoeffY = ReadInt16(calData.Slice(20, 2));
-            var gyroCoeffZ = ReadInt16(calData.Slice(22, 2));
-
-            var accHorizontalOffsetX = ReadInt16(paramData.Slice(0, 2));
-            var accHorizontalOffsetY = ReadInt16(paramData.Slice(2, 2));
-            var accHorizontalOffsetZ = ReadInt16(paramData.Slice(4, 2));
-
-            _calibration = new ImuCalibration
-            {
-                AccX = new AccCalAxis
-                {
-                    Origin = accOriginX,
-                    HorizontalOffset = accHorizontalOffsetX,
-                    Coeff = accCoeffX
-                },
-                AccY = new AccCalAxis
-                {
-                    Origin = accOriginY,
-                    HorizontalOffset = accHorizontalOffsetY,
-                    Coeff = accCoeffY
-                },
-                AccZ = new AccCalAxis
-                {
-                    Origin = accOriginZ,
-                    HorizontalOffset = accHorizontalOffsetZ,
-                    Coeff = accCoeffZ
-                },
-                GyroX = new AccGyroAxis
-                {
-                    Offset = gyroOffsetX,
-                    Coeff = gyroCoeffX
-                },
-                GyroY = new AccGyroAxis
-                {
-                    Offset = gyroOffsetY,
-                    Coeff = gyroCoeffY
-                },
-                GyroZ = new AccGyroAxis
-                {
-                    Offset = gyroOffsetZ,
-                    Coeff = gyroCoeffZ
-                }
+                Type.Left => LeftStickUserCalibration,
+                Type.Right => RightStickUserCalibration,
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
             };
         }
 
-        internal void UpdateImu(ReadOnlySpan<byte> data,
-            bool levelToFlatSurface = false)
+        public static uint GetStickFactoryCalibrationAddress(Type type)
         {
-            var out3 = new ImuSample[3];
-
-            // 加速度係数: 1.0 / (coeff - origin) * 4.0
-            var accCoeffX = 1f / (_calibration.AccX.Coeff - _calibration.AccX.Origin) * 4f;
-            var accCoeffY = 1f / (_calibration.AccY.Coeff - _calibration.AccY.Origin) * 4f;
-            var accCoeffZ = 1f / (_calibration.AccZ.Coeff - _calibration.AccZ.Origin) * 4f;
-
-            // ジャイロ係数: 936 / (coeff - offset) (70 mdps/digit換算)
-            var gyroCoeffX = 936f / (_calibration.GyroX.Coeff - _calibration.GyroX.Offset);
-            var gyroCoeffY = 936f / (_calibration.GyroY.Coeff - _calibration.GyroY.Offset);
-            var gyroCoeffZ = 936f / (_calibration.GyroZ.Coeff - _calibration.GyroZ.Offset);
-
-            var baseIdx = 13;
-            for (var i = 0; i < 3; i++)
+            return type switch
             {
-                var ax = ReadInt16(data.Slice(baseIdx + i * 12 + 0, 2));
-                var ay = ReadInt16(data.Slice(baseIdx + i * 12 + 2, 2));
-                var az = ReadInt16(data.Slice(baseIdx + i * 12 + 4, 2));
-                var gx = ReadInt16(data.Slice(baseIdx + i * 12 + 6, 2));
-                var gy = ReadInt16(data.Slice(baseIdx + i * 12 + 8, 2));
-                var gz = ReadInt16(data.Slice(baseIdx + i * 12 + 10, 2));
-
-                // ズレを補正する場合はオフセットを適用
-                if (levelToFlatSurface)
-                {
-                    ax = (short)(ax - _calibration.AccX.HorizontalOffset);
-                    ay = (short)(ay - _calibration.AccY.HorizontalOffset);
-                    az = (short)(az - _calibration.AccZ.HorizontalOffset);
-                }
-
-                // 加速度[G]
-                var accG = new Vector3(
-                    ax * accCoeffX,
-                    ay * accCoeffY,
-                    az * accCoeffZ
-                );
-
-                // 角速度[deg/s] バイアス除去+係数
-                var gyroDps = new Vector3(
-                    (gx - _calibration.GyroX.Offset) * gyroCoeffX,
-                    (gy - _calibration.GyroY.Offset) * gyroCoeffY,
-                    (gz - _calibration.GyroZ.Offset) * gyroCoeffZ
-                );
-
-                out3[i] = new ImuSample
-                {
-                    AccG = accG,
-                    GyroDps = gyroDps
-                };
-            }
-
-            Samples = out3;
+                Type.Left => LeftStickFactoryCalibration,
+                Type.Right => RightStickFactoryCalibration,
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+            };
         }
 
-        // センサーのキャリブレーションデータ
-        private struct AccCalAxis
+        public static uint GetStickParametersAddress(Type type)
         {
-            internal short Origin; // 完全水平状態のときの値
-            internal short HorizontalOffset; // 完全水平状態からのオフセット(JoyConは突起があるため)
-            internal short Coeff; // 感度調整用の係数
-        }
-
-        private struct AccGyroAxis
-        {
-            internal short Offset; // 完全静止状態のときの値
-            internal short Coeff; // 感度調整用の係数
-        }
-
-        private struct ImuCalibration
-        {
-            internal AccCalAxis AccX, AccY, AccZ;
-            internal AccGyroAxis GyroX, GyroY, GyroZ;
+            return type switch
+            {
+                Type.Left => LeftStickParameters,
+                Type.Right => RightStickParameters,
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+            };
         }
     }
 
-    public struct ImuSample
-    {
-        public Vector3 AccG; // G
-        public Vector3 GyroDps; // deg/s
-    }
-
-    internal enum SubCommandType
+    public enum SubCommandType : byte
     {
         GetOnlyControllerState = 0x00,
         BluetoothManualPairing = 0x01,
