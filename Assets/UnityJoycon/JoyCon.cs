@@ -1,154 +1,67 @@
 #nullable enable
 
 using System;
-using System.Linq;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 
 namespace UnityJoycon
 {
-    public class JoyCon : IDisposable
+    public class JoyCon : IAsyncDisposable
     {
         private const ushort LeftProductId = 0x2006;
         private const ushort RightProductId = 0x2007;
 
-        private const int ReceiveLength = 0x31;
-
-        private readonly byte[] _defaultRumbleData = { 0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40 };
-        private readonly HidDevice _device;
+        private readonly Channel<State> _stateChannel = Channel.CreateBounded<State>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
 
         public readonly Type Type;
-        private Calibration _calibration = null!;
 
         private bool _disposedValue;
-        private byte _packetCounter;
 
-        public JoyCon(HidDevice device)
+        private InternalJoyCon? _internalJoyCon;
+
+        private State? _lastState;
+
+        private JoyCon(HidDevice device)
         {
-            _device = device;
             Type = device.Info.ProductId switch
             {
                 LeftProductId => Type.Left,
                 RightProductId => Type.Right,
                 _ => throw new ArgumentException("Invalid product ID for Joy-Con", nameof(device))
             };
-            _device.SetBlockingMode(true);
-
-            // Input report mode
-            SendSubCommand(SubCommandType.SetInputReportMode, new byte[] { 0x3f });
-            // Calibration
-            UpdateCalibration();
-            // Connect
-            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x01 });
-            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x02 });
-            // SendSubCommand(SubCommandType.BluetoothManualPairing, new byte[] { 0x03 });
-            // Set player lights
-            SendSubCommand(SubCommandType.SetPlayerLights, new byte[] { 0b0000_0001 });
-            // Enable IMU
-            SendSubCommand(SubCommandType.EnableImu, new byte[] { 0x01 });
-            // Subscribe sensor data
-            SendSubCommand(SubCommandType.SetInputReportMode, new byte[] { 0x30 });
-            // Enable vibration
-            SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x01 });
         }
 
-        public State? State { get; private set; }
+        public State? State
+        {
+            get
+            {
+                if (_stateChannel.Reader.TryRead(out var state)) _lastState = state;
 
-        public void Dispose()
+                return _lastState;
+            }
+        }
+
+        public async ValueTask DisposeAsync()
         {
             if (_disposedValue) return;
 
-            // Disable vibration
-            SendSubCommand(SubCommandType.EnableVibration, new byte[] { 0x00 });
-            // Unsubscribe sensor data
-            SendSubCommand(SubCommandType.SetInputReportMode, new byte[] { 0x3f });
-            // Disable IMU
-            SendSubCommand(SubCommandType.EnableImu, new byte[] { 0x00 });
-            // Turn off player lights
-            // SendSubCommand(SubCommandType.SetPlayerLights, new byte[] { 0x00 });
+            if (_internalJoyCon != null) await _internalJoyCon.DisposeAsync();
 
             _disposedValue = true;
         }
 
-        public void Update()
+        public static async ValueTask<JoyCon> Create(HidDevice device)
         {
-            var data = ReceiveRaw();
-            if (data.Length == 0) return;
-            if (data[0] is not (0x30 or 0x31 or 0x32 or 0x33)) return; // IMUの含まれる標準レポート以外は無視
+            var joyCon = new JoyCon(device);
 
-            var report = new StandardReport(data);
-            State = new State(report, _calibration, Type);
-        }
+            joyCon._internalJoyCon = await InternalJoyCon.Create(device, joyCon.Type, joyCon._stateChannel.Writer);
 
-        private byte[] SendSubCommand(SubCommandType cmdType, Span<byte> cmdData)
-        {
-            // Report ID (1) + Packet Counter (1) + Rumble Data (8) + Subcommand (1) + Subcommand Data (n)
-            var packetLength = 1 + 1 + _defaultRumbleData.Length + 1 + cmdData.Length;
-            var packet = new byte[packetLength];
-            packet[0] = 0x01; // Report ID
-            packet[1] = _packetCounter;
-            _packetCounter = (byte)((_packetCounter + 1) % 16);
-            _defaultRumbleData.CopyTo(packet, 2);
-            packet[10] = (byte)cmdType;
-            cmdData.CopyTo(packet.AsSpan(11));
-            _device.Write(packet);
-
-            var res = new byte[ReceiveLength];
-            var len = _device.ReadTimeout(res, TimeSpan.FromMilliseconds(50));
-            return res.AsSpan(0, (int)len).ToArray();
-        }
-
-        private void UpdateCalibration()
-        {
-            // ユーザーのキャリブレーション設定を読み込む
-            var stickCalData = ReadSpi(SpiAddresses.GetStickUserCalibrationAddress(Type), 9);
-            var foundUserStickCalData = stickCalData.Any(b => b != 0xff);
-            // ユーザーのキャリブレーション設定が保存されていない場合
-            if (!foundUserStickCalData)
-                // 工場出荷時のキャリブレーション設定を読み込む
-                stickCalData = ReadSpi(SpiAddresses.GetStickFactoryCalibrationAddress(Type), 9);
-
-            // スティックのパラメータを読み込む
-            var stickParamData = ReadSpi(SpiAddresses.GetStickParametersAddress(Type), 18);
-
-
-            // ユーザーのIMUのキャリブレーション設定を読み込む
-            // メモ: -0.24, -0.10, -0.30付近で静止
-            // TODO: 工場出荷時のIMUのキャリブレーション設定を読み込む
-            // メモ: 0.24, -0.73, -1.16付近で静止
-            var imuCalData = ReadSpi(SpiAddresses.ImuFactoryCalibration, 24);
-
-            // IMUのパラメータを読み込む
-            var imuParamData = ReadSpi(SpiAddresses.ImuParameters, 6);
-
-            _calibration = CalibrationParser.Parse(stickCalData, stickParamData, imuCalData, imuParamData, Type);
-        }
-
-        private byte[] ReceiveRaw()
-        {
-            var res = new byte[ReceiveLength];
-            var len = _device.Read(res);
-
-            return res.AsSpan(0, (int)len).ToArray();
-        }
-
-        private byte[] ReadSpi(uint addr, byte length)
-        {
-            if (length is < 1 or > 0x1d) throw new ArgumentOutOfRangeException(nameof(length));
-            var cmdData = new[]
-            {
-                (byte)(addr & 0xff), (byte)((addr >> 8) & 0xff), (byte)((addr >> 16) & 0xff),
-                (byte)((addr >> 24) & 0xff), length
-            };
-            var res = SendSubCommand(SubCommandType.SpiFlashRead, cmdData);
-            if (res[0] != 0x21 || res[14] != (byte)SubCommandType.SpiFlashRead)
-                throw new Exception("Unexpected response");
-
-            var receivedAddress = res[15] | ((uint)res[16] << 8) | ((uint)res[17] << 16) | ((uint)res[18] << 24);
-            if (receivedAddress != addr) throw new Exception("Address mismatch");
-
-            var receivedLength = res[19];
-            if (receivedLength != length) throw new Exception("Length mismatch");
-
-            return res.AsSpan(20, receivedLength).ToArray();
+            return joyCon;
         }
     }
 

@@ -92,7 +92,7 @@ namespace UnityJoycon
 
         public byte Vibration => S[12];
 
-        public SubCommandResponse SubCommandResponse
+        public SubCommandReply SubCommandReply
         {
             get
             {
@@ -100,7 +100,7 @@ namespace UnityJoycon
                 if (S.Length < 15) throw new InvalidOperationException("Subcommand response packet is too short.");
 
                 var maxDataLength = Math.Min(35, S.Length - 15);
-                return new SubCommandResponse(S.Slice(13, 2 + maxDataLength));
+                return new SubCommandReply(S.Slice(13, 2 + maxDataLength).ToArray());
             }
         }
 
@@ -168,18 +168,19 @@ namespace UnityJoycon
         }
     }
 
-    public readonly ref struct SubCommandResponse
+    public readonly struct SubCommandReply
     {
-        private readonly ReadOnlySpan<byte> _data;
+        private readonly ReadOnlyMemory<byte> _data;
+        private ReadOnlySpan<byte> S => _data.Span;
 
-        public SubCommandResponse(ReadOnlySpan<byte> data)
+        public SubCommandReply(ReadOnlyMemory<byte> data)
         {
             _data = data;
         }
 
-        public byte Ack => _data[0];
+        public byte Ack => S[0];
         public bool IsPositive => (Ack & 0x80) != 0;
-        public SubCommandType SubCommandType => (SubCommandType)_data[1];
-        public ReadOnlySpan<byte> Data => _data.Slice(2);
+        public SubCommandType SubCommandType => (SubCommandType)S[1];
+        public ReadOnlySpan<byte> Data => S[2..];
     }
 }

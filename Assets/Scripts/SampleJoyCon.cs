@@ -23,7 +23,7 @@ public class SampleJoyCon : MonoBehaviour
     private Hidapi _hidapi;
     private JoyCon _joycon;
 
-    private void Awake()
+    private async void Awake()
     {
         _hidapi = new Hidapi();
         var deviceInfos = _hidapi.GetDevices(0x057e);
@@ -37,14 +37,12 @@ public class SampleJoyCon : MonoBehaviour
         _device = _hidapi.OpenDevice(deviceInfo);
         Debug.Log($"Opened device: {deviceInfo.ProductString} ({deviceInfo.VendorId:X4}:{deviceInfo.ProductId:X4})");
 
-        _joycon = new JoyCon(_device);
+        _joycon = await JoyCon.Create(_device);
     }
 
     private void Update()
     {
-        if (_joycon == null) return;
-        _joycon.Update();
-        if (_joycon.State == null) return;
+        if (_joycon == null || _joycon.State == null) return;
 
         upButton.material.color = _joycon.State.GetButtonRaw(ButtonRaw.X) || _joycon.State.GetButtonRaw(ButtonRaw.Up)
             ? Color.green
@@ -95,10 +93,9 @@ public class SampleJoyCon : MonoBehaviour
         gyroText.SetText($"Gyro: {imuSample.Gyro.X:F2}, {imuSample.Gyro.Y:F2}, {imuSample.Gyro.Z:F2}");
     }
 
-    private void OnDestroy()
+    private async void OnDestroy()
     {
-        _joycon?.Dispose();
-        _device?.Dispose();
+        if (_joycon != null) await _joycon.DisposeAsync();
         _hidapi.Dispose();
     }
 }
