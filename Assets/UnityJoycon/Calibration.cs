@@ -1,148 +1,96 @@
 #nullable enable
 
 using System;
+using System.Buffers.Binary;
 
 namespace UnityJoycon
 {
-    public struct StickCalAxis
+    internal readonly struct StickAxisCalibration
     {
-        /// <summary>
-        ///     中心位置の値
-        /// </summary>
-        public ushort Center { get; }
-
-        /// <summary>
-        ///     下限値
-        /// </summary>
-        public ushort Min { get; }
-
-        /// <summary>
-        ///     上限値
-        /// </summary>
-        public ushort Max { get; }
-
-        public StickCalAxis(ushort center, ushort min, ushort max)
+        /// <summary>中心位置の値</summary>
+        public StickAxisCalibration(ushort center, ushort min, ushort max)
         {
             Center = center;
             Min = min;
             Max = max;
         }
+
+        public ushort Center { get; }
+        public ushort Min { get; }
+        public ushort Max { get; }
     }
 
-    public struct StickCalibration
+    internal readonly struct StickCalibration
     {
-        /// <summary>
-        ///     X軸のキャリブレーションデータ
-        /// </summary>
-        public StickCalAxis X { get; }
-
-        /// <summary>
-        ///     Y軸のキャリブレーションデータ
-        /// </summary>
-        public StickCalAxis Y { get; }
-
-        /// <summary>
-        ///     デッドゾーンの値
-        /// </summary>
-        public ushort DeadZone { get; }
-
-        public StickCalibration(StickCalAxis x, StickCalAxis y, ushort deadZone)
+        /// <summary>デッドゾーンの値</summary>
+        public StickCalibration(StickAxisCalibration x, StickAxisCalibration y, ushort deadZone)
         {
             X = x;
             Y = y;
             DeadZone = deadZone;
         }
+
+        public StickAxisCalibration X { get; }
+        public StickAxisCalibration Y { get; }
+        public ushort DeadZone { get; }
     }
 
-    public struct AccCalAxis
+    internal readonly struct AccelerometerAxisCalibration
     {
-        /// <summary>
-        ///     完全水平状態のときの値
-        /// </summary>
-        public short Origin { get; }
-
-        /// <summary>
-        ///     完全水平状態のときに値を0にするためのオフセット値
-        /// </summary>
-        public short HorizontalOffset { get; }
-
-        /// <summary>
-        ///     感度調整用の係数
-        /// </summary>
-        public short Coeff { get; }
-
-        public AccCalAxis(short origin, short horizontalOffset, short coeff)
+        /// <summary>完全水平状態のときの値</summary>
+        public AccelerometerAxisCalibration(short origin, short horizontalOffset, short coefficient)
         {
             Origin = origin;
             HorizontalOffset = horizontalOffset;
-            Coeff = coeff;
+            Coefficient = coefficient;
         }
+
+        public short Origin { get; }
+        public short HorizontalOffset { get; }
+        public short Coefficient { get; }
     }
 
-    public struct GyroCalAxis
+    internal readonly struct GyroscopeAxisCalibration
     {
-        /// <summary>
-        ///     完全水平状態のときの値
-        /// </summary>
-        public short Offset { get; }
-
-        /// <summary>
-        ///     感度調整用の係数
-        /// </summary>
-        public short Coeff { get; }
-
-        public GyroCalAxis(short offset, short coeff)
+        /// <summary>完全水平状態のときの値</summary>
+        public GyroscopeAxisCalibration(short offset, short coefficient)
         {
             Offset = offset;
-            Coeff = coeff;
+            Coefficient = coefficient;
         }
+
+        public short Offset { get; }
+        public short Coefficient { get; }
     }
 
-    public struct ImuCalAxis
+    internal readonly struct ImuAxisCalibration
     {
-        /// <summary>
-        ///     加速度センサーのキャリブレーションデータ
-        /// </summary>
-        public AccCalAxis Acc { get; }
-
-        /// <summary>
-        ///     ジャイロセンサーのキャリブレーションデータ
-        /// </summary>
-        public GyroCalAxis Gyro { get; }
-
-        public ImuCalAxis(AccCalAxis acc, GyroCalAxis gyro)
+        public ImuAxisCalibration(AccelerometerAxisCalibration accelerometer,
+            GyroscopeAxisCalibration gyroscope)
         {
-            Acc = acc;
-            Gyro = gyro;
+            Accelerometer = accelerometer;
+            Gyroscope = gyroscope;
         }
+
+        public AccelerometerAxisCalibration Accelerometer { get; }
+        public GyroscopeAxisCalibration Gyroscope { get; }
     }
 
-    public struct ImuCalibration
+    internal sealed class ImuCalibration
     {
-        /// <summary>
-        ///     X軸のキャリブレーションデータ
-        /// </summary>
-        public ImuCalAxis X { get; }
-
-        /// <summary>
-        ///     Y軸のキャリブレーションデータ
-        /// </summary>
-        public ImuCalAxis Y { get; }
-
-        /// <summary>
-        ///     Z軸のキャリブレーションデータ
-        /// </summary>
-        public ImuCalAxis Z { get; }
-
-        public ImuCalibration(ImuCalAxis x, ImuCalAxis y, ImuCalAxis z)
+        public ImuCalibration(ImuAxisCalibration x, ImuAxisCalibration y, ImuAxisCalibration z)
         {
             X = x;
             Y = y;
             Z = z;
         }
+
+        public ImuAxisCalibration X { get; }
+        public ImuAxisCalibration Y { get; }
+        public ImuAxisCalibration Z { get; }
     }
 
-    public class Calibration
+    internal sealed class Calibration
     {
         public Calibration(StickCalibration stick, ImuCalibration imu)
         {
@@ -150,32 +98,32 @@ namespace UnityJoycon
             Imu = imu;
         }
 
-        /// <summary>
-        ///     スティックのキャリブレーションデータ
-        /// </summary>
+        /// <summary>スティックのキャリブレーションデータ</summary>
         public StickCalibration Stick { get; }
 
-        /// <summary>
-        ///     IMUのキャリブレーションデータ
-        /// </summary>
+        /// <summary>IMUのキャリブレーションデータ</summary>
         public ImuCalibration Imu { get; }
     }
 
-    public static class CalibrationParser
+    internal static class CalibrationParser
     {
-        public static Calibration Parse(ReadOnlySpan<byte> stickCalData, ReadOnlySpan<byte> stickParamData,
-            ReadOnlySpan<byte> imuCalData, ReadOnlySpan<byte> imuParamData, Type type)
+        public static Calibration Parse(
+            ReadOnlySpan<byte> stickCalibrationData,
+            ReadOnlySpan<byte> stickParameterData,
+            ReadOnlySpan<byte> imuCalibrationData,
+            ReadOnlySpan<byte> imuParameterData,
+            Side side)
         {
-            var stickCal = ParseStickCalibration(stickCalData, stickParamData, type);
-            var imuCal = ParseImuCalibration(imuCalData, imuParamData);
+            var stick = ParseStickCalibration(stickCalibrationData, stickParameterData, side);
+            var imu = ParseImuCalibration(imuCalibrationData, imuParameterData);
 
-            return new Calibration(stickCal, imuCal);
+            return new Calibration(stick, imu);
         }
 
         // 参照: https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/spi_flash_notes.md#analog-stick-factory-and-user-calibration
         // 参照: https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/spi_flash_notes.md#stick-parameters-1--2
         private static StickCalibration ParseStickCalibration(ReadOnlySpan<byte> stickCalData,
-            ReadOnlySpan<byte> stickParamData, Type type)
+            ReadOnlySpan<byte> stickParamData, Side side)
         {
             var rawCalData = new[]
             {
@@ -187,23 +135,23 @@ namespace UnityJoycon
                 (ushort)((stickCalData[8] << 4) | (stickCalData[7] >> 4))
             };
 
-
             var deadZone = (ushort)(((stickParamData[4] << 8) & 0xf00) | stickParamData[3]);
 
-            var stickCalX = type switch
+            var xAxis = side switch
             {
-                Type.Left => new StickCalAxis(rawCalData[2], rawCalData[4], rawCalData[0]),
-                Type.Right => new StickCalAxis(rawCalData[0], rawCalData[2], rawCalData[4]),
-                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
-            };
-            var stickCalY = type switch
-            {
-                Type.Left => new StickCalAxis(rawCalData[3], rawCalData[5], rawCalData[1]),
-                Type.Right => new StickCalAxis(rawCalData[1], rawCalData[3], rawCalData[5]),
-                _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+                Side.Left => new StickAxisCalibration(rawCalData[2], rawCalData[4], rawCalData[0]),
+                Side.Right => new StickAxisCalibration(rawCalData[0], rawCalData[2], rawCalData[4]),
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
             };
 
-            return new StickCalibration(stickCalX, stickCalY, deadZone);
+            var yAxis = side switch
+            {
+                Side.Left => new StickAxisCalibration(rawCalData[3], rawCalData[5], rawCalData[1]),
+                Side.Right => new StickAxisCalibration(rawCalData[1], rawCalData[3], rawCalData[5]),
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
+            };
+
+            return new StickCalibration(xAxis, yAxis, deadZone);
         }
 
         // 参照: https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/spi_flash_notes.md#6-axis-sensor-factory-and-user-calibration
@@ -211,7 +159,7 @@ namespace UnityJoycon
         private static ImuCalibration ParseImuCalibration(ReadOnlySpan<byte> imuCalData,
             ReadOnlySpan<byte> imuParamData)
         {
-            var axis = new ImuCalAxis[3];
+            var axes = new ImuAxisCalibration[3];
             for (var i = 0; i < 3; i++)
             {
                 var accOrigin = ReadInt16(imuCalData.Slice(0 + i * 2, 2));
@@ -221,18 +169,18 @@ namespace UnityJoycon
 
                 var accHorizontalOffset = ReadInt16(imuParamData.Slice(0 + i * 2, 2));
 
-                axis[i] = new ImuCalAxis(
-                    new AccCalAxis(accOrigin, accHorizontalOffset, accCoeff),
-                    new GyroCalAxis(gyroOffset, gyroCoeff)
-                );
+                var accelerometer = new AccelerometerAxisCalibration(accOrigin, accHorizontalOffset, accCoeff);
+                var gyroscope = new GyroscopeAxisCalibration(gyroOffset, gyroCoeff);
+
+                axes[i] = new ImuAxisCalibration(accelerometer, gyroscope);
             }
 
-            return new ImuCalibration(axis[0], axis[1], axis[2]);
+            return new ImuCalibration(axes[0], axes[1], axes[2]);
         }
 
         private static short ReadInt16(ReadOnlySpan<byte> buffer)
         {
-            return (short)(buffer[0] | (buffer[1] << 8));
+            return BinaryPrimitives.ReadInt16LittleEndian(buffer);
         }
     }
 }

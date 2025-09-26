@@ -3,9 +3,8 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using UnityEngine;
 
-namespace UnityJoycon
+namespace UnityJoycon.Hidapi
 {
     public class Hidapi : IDisposable
     {
@@ -13,7 +12,6 @@ namespace UnityJoycon
 
         public Hidapi()
         {
-            Debug.Log($"Initializing {nameof(Hidapi)}");
             var res = NativeMethods.hid_init();
             if (res != 0) throw GetError();
         }
@@ -21,7 +19,6 @@ namespace UnityJoycon
         public void Dispose()
         {
             if (_disposedValue) return;
-            Debug.Log($"Destroying {nameof(Hidapi)}");
             var res = NativeMethods.hid_exit();
             if (res != 0) throw GetError();
             _disposedValue = true;
@@ -61,7 +58,7 @@ namespace UnityJoycon
 
                 if (device == null) throw GetError();
 
-                return new HidDevice(device, info);
+                return new HidDevice(device);
             }
         }
 
@@ -80,12 +77,10 @@ namespace UnityJoycon
     {
         private readonly unsafe hid_device_* _device;
         private bool _disposedValue;
-        public readonly HidDeviceInfo Info;
 
-        internal unsafe HidDevice(hid_device_* device, HidDeviceInfo info)
+        internal unsafe HidDevice(hid_device_* device)
         {
             _device = device;
-            Info = info;
         }
 
         public void Dispose()
@@ -106,6 +101,16 @@ namespace UnityJoycon
             {
                 var res = NativeMethods.hid_set_nonblocking(_device, blocking ? 0 : 1);
                 if (res != 0) throw GetError();
+            }
+        }
+
+        public HidDeviceInfo GetInfo()
+        {
+            unsafe
+            {
+                var ptr = NativeMethods.hid_get_device_info(_device);
+                if (ptr == null) throw GetError();
+                return new HidDeviceInfo(ptr);
             }
         }
 

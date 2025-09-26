@@ -5,7 +5,7 @@ using System.Buffers.Binary;
 
 namespace UnityJoycon
 {
-    public enum BatteryLevel : byte
+    internal enum BatteryLevel : byte
     {
         Empty = 0x00,
         Critical = 0x02,
@@ -15,46 +15,39 @@ namespace UnityJoycon
         Unknown = 0xff
     }
 
-    public enum ControllerType : byte
+    internal enum ControllerType : byte
     {
         ProOrGrip = 0x00,
         JoyCon = 0x03,
         Unknown = 0xff
     }
 
-    public struct ConnectionInfo
+    internal readonly struct ConnectionInfo
     {
-        public ControllerType ControllerType { get; }
-        public bool IsSwitchOrUsbPowered { get; }
-
         public ConnectionInfo(ControllerType controllerType, bool isSwitchOrUsbPowered)
         {
             ControllerType = controllerType;
             IsSwitchOrUsbPowered = isSwitchOrUsbPowered;
         }
+
+        public ControllerType ControllerType { get; }
+        public bool IsSwitchOrUsbPowered { get; }
     }
 
-    public struct StickRaw
+    internal readonly struct StickRaw
     {
-        public ushort X { get; }
-        public ushort Y { get; }
-
         public StickRaw(ushort x, ushort y)
         {
             X = x;
             Y = y;
         }
+
+        public ushort X { get; }
+        public ushort Y { get; }
     }
 
-    public struct ImuRaw
+    internal readonly struct ImuRaw
     {
-        public short AccX { get; }
-        public short AccY { get; }
-        public short AccZ { get; }
-        public short GyroX { get; }
-        public short GyroY { get; }
-        public short GyroZ { get; }
-
         public ImuRaw(short accX, short accY, short accZ, short gyroX, short gyroY, short gyroZ)
         {
             AccX = accX;
@@ -64,43 +57,50 @@ namespace UnityJoycon
             GyroY = gyroY;
             GyroZ = gyroZ;
         }
+
+        public short AccX { get; }
+        public short AccY { get; }
+        public short AccZ { get; }
+        public short GyroX { get; }
+        public short GyroY { get; }
+        public short GyroZ { get; }
     }
 
     // 参照: https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_notes.md#standard-input-report-format
-    public readonly struct StandardReport
+    internal readonly struct StandardReport
     {
         private readonly ReadOnlyMemory<byte> _data;
 
         public StandardReport(ReadOnlyMemory<byte> data)
         {
+            if (data.Length == 0) throw new ArgumentException("Report payload cannot be empty.", nameof(data));
             _data = data;
         }
 
-        private ReadOnlySpan<byte> S => _data.Span;
+        private ReadOnlySpan<byte> Span => _data.Span;
 
-        public byte ReportId => S[0];
-        public byte Timer => S[1];
+        public byte ReportId => Span[0];
+        public byte Timer => Span[1];
 
-        public BatteryLevel BatteryLevel => DecodeBatteryLevel((byte)(S[2] >> 4));
+        public BatteryLevel BatteryLevel => DecodeBatteryLevel((byte)(Span[2] >> 4));
+        public ConnectionInfo ConnectionInfo => DecodeConnectionInfo((byte)(Span[2] >> 4));
 
-        public ConnectionInfo ConnectionInfo => DecodeConnectionInfo((byte)(S[2] >> 4));
+        public uint Buttons => (uint)(Span[3] | (Span[4] << 8) | (Span[5] << 16));
 
-        public uint Buttons => (uint)(S[3] | (S[4] << 8) | (S[5] << 16));
+        public StickRaw StickL => DecodeStick(Span.Slice(6, 3));
+        public StickRaw StickR => DecodeStick(Span.Slice(9, 3));
 
-        public StickRaw StickL => DecodeStick(S.Slice(6, 3));
-        public StickRaw StickR => DecodeStick(S.Slice(9, 3));
-
-        public byte Vibration => S[12];
+        public byte Vibration => Span[12];
 
         public SubCommandReply SubCommandReply
         {
             get
             {
                 if (ReportId != 0x21) throw new InvalidOperationException("Not a subcommand response packet.");
-                if (S.Length < 15) throw new InvalidOperationException("Subcommand response packet is too short.");
+                if (Span.Length < 15) throw new InvalidOperationException("Subcommand response packet is too short.");
 
-                var maxDataLength = Math.Min(35, S.Length - 15);
-                return new SubCommandReply(S.Slice(13, 2 + maxDataLength).ToArray());
+                var maxDataLength = Math.Min(35, Span.Length - 15);
+                return new SubCommandReply(Span.Slice(13, 2 + maxDataLength).ToArray());
             }
         }
 
@@ -110,9 +110,9 @@ namespace UnityJoycon
             {
                 if (ReportId is not (0x30 or 0x31 or 0x32 or 0x33))
                     throw new InvalidOperationException("Not an IMU packet.");
-                if (S.Length < 49) throw new InvalidOperationException("IMU packet is too short.");
+                if (Span.Length < 49) throw new InvalidOperationException("IMU packet is too short.");
 
-                return DecodeImu(S.Slice(13, 36));
+                return DecodeImu(Span.Slice(13, 36));
             }
         }
 
@@ -168,19 +168,21 @@ namespace UnityJoycon
         }
     }
 
-    public readonly struct SubCommandReply
+    internal readonly struct SubCommandReply
     {
         private readonly ReadOnlyMemory<byte> _data;
-        private ReadOnlySpan<byte> S => _data.Span;
+        private ReadOnlySpan<byte> Span => _data.Span;
 
         public SubCommandReply(ReadOnlyMemory<byte> data)
         {
+            if (data.Length < 2)
+                throw new ArgumentException("Subcommand reply requires at least 2 bytes.", nameof(data));
             _data = data;
         }
 
-        public byte Ack => S[0];
+        public byte Ack => Span[0];
         public bool IsPositive => (Ack & 0x80) != 0;
-        public SubCommandType SubCommandType => (SubCommandType)S[1];
-        public ReadOnlySpan<byte> Data => S[2..];
+        public JoyConSubCommand SubCommand => (JoyConSubCommand)Span[1];
+        public ReadOnlySpan<byte> Data => Span[2..];
     }
 }

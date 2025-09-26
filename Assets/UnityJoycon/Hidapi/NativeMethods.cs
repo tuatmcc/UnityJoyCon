@@ -8,7 +8,7 @@ using System;
 using System.Runtime.InteropServices;
 
 
-namespace UnityJoycon
+namespace UnityJoycon.Hidapi
 {
     internal static unsafe partial class NativeMethods
     {

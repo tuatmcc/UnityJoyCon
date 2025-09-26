@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityJoycon;
+using UnityJoycon.Hidapi;
 
 public class SampleJoyCon : MonoBehaviour
 {
@@ -37,60 +38,61 @@ public class SampleJoyCon : MonoBehaviour
         _device = _hidapi.OpenDevice(deviceInfo);
         Debug.Log($"Opened device: {deviceInfo.ProductString} ({deviceInfo.VendorId:X4}:{deviceInfo.ProductId:X4})");
 
-        _joycon = await JoyCon.Create(_device);
+        _joycon = await JoyCon.CreateAsync(_device);
     }
 
     private void Update()
     {
-        if (_joycon == null || _joycon.State == null) return;
+        if (_joycon == null || !_joycon.TryGetState(out var state)) return;
 
-        upButton.material.color = _joycon.State.GetButtonRaw(ButtonRaw.X) || _joycon.State.GetButtonRaw(ButtonRaw.Up)
+        upButton.material.color = state.IsButtonPressed(Button.X) || state.IsButtonPressed(Button.Up)
             ? Color.green
             : Color.black;
         downButton.material.color =
-            _joycon.State.GetButtonRaw(ButtonRaw.B) || _joycon.State.GetButtonRaw(ButtonRaw.Down)
+            state.IsButtonPressed(Button.B) || state.IsButtonPressed(Button.Down)
                 ? Color.green
                 : Color.black;
         leftButton.material.color =
-            _joycon.State.GetButtonRaw(ButtonRaw.Y) || _joycon.State.GetButtonRaw(ButtonRaw.Left)
+            state.IsButtonPressed(Button.Y) || state.IsButtonPressed(Button.Left)
                 ? Color.green
                 : Color.black;
         rightButton.material.color =
-            _joycon.State.GetButtonRaw(ButtonRaw.A) || _joycon.State.GetButtonRaw(ButtonRaw.Right)
+            state.IsButtonPressed(Button.A) || state.IsButtonPressed(Button.Right)
                 ? Color.green
                 : Color.black;
-        slButton.material.color = _joycon.State.GetButtonRaw(ButtonRaw.LSL) || _joycon.State.GetButtonRaw(ButtonRaw.RSL)
+        slButton.material.color = state.IsButtonPressed(Button.LSL) || state.IsButtonPressed(Button.RSL)
             ? Color.green
             : Color.black;
-        srButton.material.color = _joycon.State.GetButtonRaw(ButtonRaw.LSR) || _joycon.State.GetButtonRaw(ButtonRaw.RSR)
+        srButton.material.color = state.IsButtonPressed(Button.LSR) || state.IsButtonPressed(Button.RSR)
             ? Color.green
             : Color.black;
-        rOrLButton.material.color = _joycon.State.GetButtonRaw(ButtonRaw.R) || _joycon.State.GetButtonRaw(ButtonRaw.L)
+        rOrLButton.material.color = state.IsButtonPressed(Button.R) || state.IsButtonPressed(Button.L)
             ? Color.green
             : Color.black;
         zrOrZlButton.material.color =
-            _joycon.State.GetButtonRaw(ButtonRaw.ZL) || _joycon.State.GetButtonRaw(ButtonRaw.ZR)
+            state.IsButtonPressed(Button.ZL) || state.IsButtonPressed(Button.ZR)
                 ? Color.green
                 : Color.black;
         plusOrMinusButton.material.color =
-            _joycon.State.GetButtonRaw(ButtonRaw.Minus) || _joycon.State.GetButtonRaw(ButtonRaw.Plus)
+            state.IsButtonPressed(Button.Minus) || state.IsButtonPressed(Button.Plus)
                 ? Color.green
                 : Color.black;
         stickButton.material.color =
-            _joycon.State.GetButtonRaw(ButtonRaw.LStick) || _joycon.State.GetButtonRaw(ButtonRaw.RStick)
+            state.IsButtonPressed(Button.LStick) || state.IsButtonPressed(Button.RStick)
                 ? Color.green
                 : Color.black;
-        homeOrCaptureButton.material.color = _joycon.State.GetButtonRaw(ButtonRaw.Capture) ||
-                                             _joycon.State.GetButtonRaw(ButtonRaw.Home)
+        homeOrCaptureButton.material.color = state.IsButtonPressed(Button.Capture) ||
+                                             state.IsButtonPressed(Button.Home)
             ? Color.green
             : Color.black;
 
-        stickAxis.localPosition = new Vector3(_joycon.State.Stick.X * 0.5f, stickAxis.localPosition.y,
-            _joycon.State.Stick.Y * -0.5f);
+        stickAxis.localPosition = new Vector3(state.Stick.X * 0.5f, stickAxis.localPosition.y,
+            state.Stick.Y * -0.5f);
 
-        var imuSample = _joycon.State.ImuSamples[0];
-        accText.SetText($"Acc: {imuSample.Acc.X:F2}, {imuSample.Acc.Y:F2}, {imuSample.Acc.Z:F2}");
-        gyroText.SetText($"Gyro: {imuSample.Gyro.X:F2}, {imuSample.Gyro.Y:F2}, {imuSample.Gyro.Z:F2}");
+        var imuSample = state.ImuSamples[0];
+        accText.SetText(
+            $"Acc: {imuSample.Acceleration.X:F2}, {imuSample.Acceleration.Y:F2}, {imuSample.Acceleration.Z:F2}");
+        gyroText.SetText($"Gyro: {imuSample.Gyroscope.X:F2}, {imuSample.Gyroscope.Y:F2}, {imuSample.Gyroscope.Z:F2}");
     }
 
     private async void OnDestroy()
