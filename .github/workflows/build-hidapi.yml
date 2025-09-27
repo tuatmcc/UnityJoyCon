@@ -140,9 +140,6 @@ jobs:
 
       - name: Prepare plugin directories
         run: |
-          mkdir -p UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/macOS
-          mkdir -p UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Linux
-          mkdir -p UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Windows
           rm -f UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/macOS/libhidapi.dylib
           rm -f UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Linux/libhidapi.so
           rm -f UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Windows/hidapi.dll
