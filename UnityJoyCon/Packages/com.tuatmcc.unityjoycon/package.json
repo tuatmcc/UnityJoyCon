@@ -12,5 +12,8 @@
   "keywords": [
     "Joy-Con",
     "Controller"
-  ]
+  ],
+  "dependencies": {
+    "org.nuget.system.threading.channels": "9.0.9"
+  }
 }
