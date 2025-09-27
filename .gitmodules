@@ -1,3 +1,0 @@
-[submodule "Native/hidapi/externals/hidapi"]
-	path = Native/hidapi/externals/hidapi
-	url = https://github.com/libusb/hidapi.git
