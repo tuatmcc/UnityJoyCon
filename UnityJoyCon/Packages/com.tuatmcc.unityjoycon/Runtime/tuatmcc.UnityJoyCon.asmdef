@@ -1,3 +1,14 @@
 {
-  "name": "tuatmcc.UnityJoyCon"
+    "name": "tuatmcc.UnityJoyCon",
+    "rootNamespace": "UnityJoyCon",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
 }
