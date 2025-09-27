@@ -7,6 +7,7 @@ jobs:
   build:
     name: Build hidapi (${{ matrix.display_name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +30,8 @@ jobs:
             cmake_configure: '-G "Visual Studio 17 2022" -A x64'
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -130,6 +133,7 @@ jobs:
     permissions:
       contents: write
     if: false
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
