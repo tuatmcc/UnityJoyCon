@@ -1,0 +1,183 @@
+name: Build hidapi binaries
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build hidapi (${{ matrix.display_name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            display_name: macOS
+            platform_dir: macOS
+            output_name: libhidapi.dylib
+            cmake_configure: >-
+              -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          - os: ubuntu-latest
+            display_name: Linux
+            platform_dir: Linux
+            output_name: libhidapi.so
+            cmake_configure: ""
+          - os: windows-latest
+            display_name: Windows
+            platform_dir: Windows
+            output_name: hidapi.dll
+            cmake_configure: '-G "Visual Studio 17 2022" -A x64'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libudev-dev
+
+      - name: Configure CMake
+        if: runner.os != 'Windows'
+        run: |
+          install_prefix="$RUNNER_TEMP/hidapi-install"
+          echo "INSTALL_PREFIX=$install_prefix" >> "$GITHUB_ENV"
+          cmake etc/hidapi \
+            -B build \
+            -DBUILD_SHARED_LIBS=ON \
+            -DHIDAPI_BUILD_HIDTEST=OFF \
+            -DHIDAPI_WITH_TESTS=OFF \
+            -DHIDAPI_WITH_LIBUSB=OFF \
+            -DCMAKE_INSTALL_PREFIX="$install_prefix" \
+            -DCMAKE_BUILD_TYPE=Release \
+            ${{ matrix.cmake_configure }}
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installPrefix = Join-Path $env:RUNNER_TEMP "hidapi-install"
+          echo "INSTALL_PREFIX=$installPrefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          cmake etc/hidapi `
+            -B build `
+            -DBUILD_SHARED_LIBS=ON `
+            -DHIDAPI_BUILD_HIDTEST=OFF `
+            -DHIDAPI_WITH_TESTS=OFF `
+            -DHIDAPI_WITH_LIBUSB=OFF `
+            -DCMAKE_INSTALL_PREFIX="$installPrefix" `
+            -DCMAKE_BUILD_TYPE=Release `
+            ${{ matrix.cmake_configure }}
+
+      - name: Build
+        if: runner.os != 'Windows'
+        run: cmake --build build --config Release
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Install
+        if: runner.os != 'Windows'
+        run: cmake --install build --config Release
+
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --install build --config Release
+
+      - name: Collect artifact (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          install_prefix="$INSTALL_PREFIX"
+          mkdir -p artifact/macOS
+          cp -L "$install_prefix"/lib/libhidapi.dylib artifact/macOS/libhidapi.dylib
+
+      - name: Collect artifact (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          install_prefix="$INSTALL_PREFIX"
+          mkdir -p artifact/Linux
+          lib_path=$(find "$install_prefix" -type f -name "libhidapi*.so*" | sort | head -n 1)
+          if [ -z "$lib_path" ]; then
+            echo "libhidapi shared object not found" >&2
+            exit 1
+          fi
+          cp -L "$lib_path" artifact/Linux/libhidapi.so
+
+      - name: Collect artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installPrefix = $env:INSTALL_PREFIX
+          $destination = "artifact/Windows"
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          $libPath = Get-ChildItem -Path $installPrefix -Filter *.dll -Recurse | Select-Object -First 1
+          if (-not $libPath) {
+            throw "hidapi DLL not found"
+          }
+          Copy-Item -Path $libPath.FullName -Destination (Join-Path $destination "hidapi.dll") -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hidapi-${{ matrix.platform_dir }}
+          path: artifact/${{ matrix.platform_dir }}
+          if-no-files-found: error
+
+  publish:
+    name: Commit binaries
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare plugin directories
+        run: |
+          mkdir -p UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/macOS
+          mkdir -p UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Linux
+          mkdir -p UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Windows
+          find UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/macOS -maxdepth 1 -type f -name 'libhidapi*.dylib' -delete
+          find UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Linux -maxdepth 1 -type f -name 'libhidapi*.so*' -delete
+          find UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Windows -maxdepth 1 -type f -name 'hidapi*.dll' -delete
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: hidapi-macOS
+          path: UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/macOS
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: hidapi-Linux
+          path: UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Linux
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: hidapi-Windows
+          path: UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Windows
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit binaries
+        id: commit
+        run: |
+          git add UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins
+          if git diff --cached --quiet; then
+            echo "commit=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "chore: update hidapi binaries"
+            echo "commit=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push changes
+        if: steps.commit.outputs.commit == 'true'
+        run: git push
