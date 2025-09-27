@@ -5,8 +5,8 @@
   "description": "UnityJoyCon is a library for using Joy-Con in Unity.",
   "unity": "2022.3",
   "author": {
-    "name": "NISHIZAWA Shuntaro",
-    "url": "https://github.com/shun-shobon"
+    "name": "TUATMCC",
+    "url": "https://github.com/tuatmcc"
   },
   "license": "MIT",
   "keywords": [
