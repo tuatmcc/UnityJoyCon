@@ -29,7 +29,7 @@ jobs:
             output_name: hidapi.dll
             cmake_configure: '-G "Visual Studio 17 2022" -A x64'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           submodules: true
 
@@ -120,7 +120,7 @@ jobs:
           }
           Copy-Item -Path $libPath.FullName -Destination (Join-Path $destination "hidapi.dll") -Force
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: hidapi-${{ matrix.platform_dir }}
           path: artifact/${{ matrix.platform_dir }}
@@ -134,7 +134,7 @@ jobs:
       contents: write
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           fetch-depth: 0
 
@@ -148,19 +148,19 @@ jobs:
           rm -f UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Windows/hidapi.dll
 
       - name: Download macOS binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: hidapi-macOS
           path: UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/macOS
 
       - name: Download Linux binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: hidapi-Linux
           path: UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Linux
 
       - name: Download Windows binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: hidapi-Windows
           path: UnityJoyCon/Packages/com.tuatmcc.unityjoycon/Runtime/Hidapi/Plugins/Windows
