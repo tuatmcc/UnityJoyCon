@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace UnityJoycon.Hidapi
 {
@@ -195,10 +196,10 @@ namespace UnityJoycon.Hidapi
             Path = Marshal.PtrToStringAnsi((IntPtr)ptr->path);
             VendorId = ptr->vendor_id;
             ProductId = ptr->product_id;
-            SerialNumber = Marshal.PtrToStringUni((IntPtr)ptr->serial_number);
+            SerialNumber = StringUtils.PtrToStringWChar((IntPtr)ptr->serial_number);
             ReleaseNumber = ptr->release_number;
-            ManufacturerString = Marshal.PtrToStringUni((IntPtr)ptr->manufacturer_string);
-            ProductString = Marshal.PtrToStringUni((IntPtr)ptr->product_string);
+            ManufacturerString = StringUtils.PtrToStringWChar((IntPtr)ptr->manufacturer_string);
+            ProductString = StringUtils.PtrToStringWChar((IntPtr)ptr->product_string);
             UsagePage = ptr->usage_page;
             Usage = ptr->usage;
             InterfaceNumber = ptr->interface_number;
@@ -210,6 +211,64 @@ namespace UnityJoycon.Hidapi
     {
         public HidapiException(string message) : base(message)
         {
+        }
+    }
+
+    internal static class StringUtils
+    {
+        private static readonly UTF32Encoding BigEndianUTF32Encoding = new UTF32Encoding(true, false);
+        
+        internal static unsafe string? PtrToStringWChar(IntPtr ptr)
+        {
+            if (ptr == IntPtr.Zero) return null;
+            
+#if UNITY_STANDALONE_WIN
+            return PtrToStringUTF16(ptr);
+#else
+            return PtrToStringUTF32(ptr);
+#endif
+        }
+
+        private static unsafe string? PtrToStringUTF16(IntPtr ptr)
+        {
+            if (ptr == IntPtr.Zero) return null;
+            
+            // null文字までの長さを取得
+            var length = 0;
+            var shortPtr = (short*)ptr;
+            checked
+            {
+                while (*shortPtr != 0)
+                {
+                    shortPtr++;
+                    length += sizeof(short);
+                }
+            }
+            if (length == 0) return string.Empty;
+
+            // エンディアンを考慮しつつ変換
+            return BitConverter.IsLittleEndian ? Encoding.Unicode.GetString((byte *)ptr, length) : Encoding.BigEndianUnicode.GetString((byte *)ptr, length);
+        }
+
+        private static unsafe string? PtrToStringUTF32(IntPtr ptr)
+        {
+            if (ptr == IntPtr.Zero) return null;
+            
+            // null文字までの長さを取得
+            var length = 0;
+            var intPtr = (int*)ptr;
+            checked
+            {
+                while (*intPtr != 0)
+                {
+                    intPtr++;
+                    length += sizeof(int);
+                }
+            }
+            if (length == 0) return string.Empty;
+            
+            // エンディアンを考慮しつつ変換
+            return BitConverter.IsLittleEndian ? Encoding.UTF32.GetString((byte *)ptr, length) : BigEndianUTF32Encoding.GetString((byte *)ptr, length);
         }
     }
 }
