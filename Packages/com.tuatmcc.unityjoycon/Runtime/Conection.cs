@@ -147,10 +147,9 @@ namespace UnityJoycon
             var stickCalibration = await ReadStickCalibrationAsync(ct);
             var stickParameters = await ReadSpiAsync(SpiFlashAddresses.GetStickParametersAddress(_side), 18, ct);
 
-            // こちらもユーザーと工場出荷時の両方が存在するが、とりあえずユーザーデータのみを読むようにする。
-            var imuCalibration = await ReadSpiAsync(SpiFlashAddresses.ImuUserCalibration, 24, ct);
+            var imuCalibration = await ReadImuCalibrationAsync(ct);
             var imuParameters = await ReadSpiAsync(SpiFlashAddresses.ImuParameters, 6, ct);
-
+            
             return CalibrationParser.Parse(stickCalibration, stickParameters, imuCalibration, imuParameters,
                 _side);
         }
@@ -162,6 +161,15 @@ namespace UnityJoycon
             if (hasUserData) return userData;
 
             return await ReadSpiAsync(SpiFlashAddresses.GetStickFactoryCalibrationAddress(_side), 9, ct);
+        }
+        
+        private async ValueTask<byte[]> ReadImuCalibrationAsync(CancellationToken ct)
+        {
+            var userData = await ReadSpiAsync(SpiFlashAddresses.ImuUserCalibration, 24, ct);
+            var hasUserData = userData.Any(b => b != 0xff);
+            if (hasUserData) return userData;
+
+            return await ReadSpiAsync(SpiFlashAddresses.ImuFactoryCalibration, 24, ct);
         }
 
         private async ValueTask<byte[]> ReadSpiAsync(uint address, byte length, CancellationToken ct)
