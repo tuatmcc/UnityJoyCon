@@ -130,6 +130,7 @@ namespace UnityJoycon
             if (!_stickCalibration.IsReady) return;
 
             var data = report->ToHIDInputReport(
+                _side,
                 _stickCalibration.DeadZone,
                 _stickCalibration.CenterX,
                 _stickCalibration.MinX, _stickCalibration.MaxX,
@@ -170,14 +171,14 @@ namespace UnityJoycon
                 _stickCalibration.MarkUserCalibrationLoaded();
                 if (IsAllPayloadUnset(payload, StickCalibrationLength)) return;
 
-                var calibration = ParseStickCalibration(payload);
+                var calibration = ParseStickCalibration(payload, _side);
                 _stickCalibration.ApplyCalibration(calibration);
                 return;
             }
 
             if (address == (uint)GetStickFactoryCalibrationAddress() && length == StickCalibrationLength)
             {
-                var calibration = ParseStickCalibration(payload);
+                var calibration = ParseStickCalibration(payload, _side);
                 _stickCalibration.ApplyCalibration(calibration);
             }
         }
@@ -196,17 +197,34 @@ namespace UnityJoycon
             return true;
         }
 
-        private static unsafe StickCalibrationValues ParseStickCalibration(byte* payload)
+        private static unsafe StickCalibrationValues ParseStickCalibration(byte* payload, Side side)
         {
-            // TODO: 左スティックの場合はパラメータの順番が異なるため修正が必要
-            var centerX = (ushort)(((payload[1] << 8) & 0xf00) | payload[0]);
-            var centerY = (ushort)((payload[2] << 4) | (payload[1] >> 4));
-            var minX = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
-            var minY = (ushort)((payload[5] << 4) | (payload[4] >> 4));
-            var maxX = (ushort)(((payload[7] << 8) & 0xf00) | payload[6]);
-            var maxY = (ushort)((payload[8] << 4) | (payload[7] >> 4));
+            var rawCalData = stackalloc ushort[6];
+            rawCalData[0] = (ushort)(((payload[1] << 8) & 0xf00) | payload[0]);
+            rawCalData[1] = (ushort)((payload[2] << 4) | (payload[1] >> 4));
+            rawCalData[2] = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
+            rawCalData[3] = (ushort)((payload[5] << 4) | (payload[4] >> 4));
+            rawCalData[4] = (ushort)(((payload[7] << 8) & 0xf00) | payload[6]);
+            rawCalData[5] = (ushort)((payload[8] << 4) | (payload[7] >> 4));
 
-            return new StickCalibrationValues(centerX, centerY, minX, minY, maxX, maxY);
+            return side switch
+            {
+                Side.Left => new StickCalibrationValues(
+                    rawCalData[2],
+                    rawCalData[3],
+                    rawCalData[4],
+                    rawCalData[5],
+                    rawCalData[0],
+                    rawCalData[1]),
+                Side.Right => new StickCalibrationValues(
+                    rawCalData[0],
+                    rawCalData[1],
+                    rawCalData[2],
+                    rawCalData[3],
+                    rawCalData[4],
+                    rawCalData[5]),
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
+            };
         }
 
         private bool TryRequestStickParameters()

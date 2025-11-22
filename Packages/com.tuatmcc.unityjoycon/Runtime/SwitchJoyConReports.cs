@@ -46,6 +46,9 @@ namespace UnityJoycon
             bit = (int)Button.ZL)]
         public uint buttons;
 
+        [InputControl(name = "leftStick", layout = "Stick", format = "VEC2", displayName = "Left Stick")]
+        public Vector2 leftStick;
+
         [InputControl(name = "rightStick", layout = "Stick", format = "VEC2", displayName = "Right Stick")]
         public Vector2 rightStick;
 
@@ -122,12 +125,22 @@ namespace UnityJoycon
         // Sub command reply data
         [FieldOffset(13)] public SubCommandReplyData subCommandReply;
 
-        public SwitchJoyConHIDInputState ToHIDInputReport(ushort stickDeadZone, ushort stickCenterX, ushort stickMinX,
-            ushort stickMaxX, ushort stickCenterY, ushort stickMinY, ushort stickMaxY)
+        public SwitchJoyConHIDInputState ToHIDInputReport(Side side, ushort stickDeadZone, ushort stickCenterX,
+            ushort stickMinX, ushort stickMaxX, ushort stickCenterY, ushort stickMinY, ushort stickMaxY)
         {
-            // TODO: 左スティックの場合は左スティックの値を使用する
-            var rawX = (ushort)(right0 | ((right1 & 0x0f) << 8));
-            var rawY = (ushort)(((right1 & 0xf0) >> 4) | (right2 << 4));
+            var rawX = side switch
+            {
+                Side.Left => (ushort)(left0 | ((left1 & 0x0f) << 8)),
+                Side.Right => (ushort)(right0 | ((right1 & 0x0f) << 8)),
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
+            };
+
+            var rawY = side switch
+            {
+                Side.Left => (ushort)(((left1 & 0xf0) >> 4) | (left2 << 4)),
+                Side.Right => (ushort)(((right1 & 0xf0) >> 4) | (right2 << 4)),
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
+            };
 
             var diffX = rawX - stickCenterX;
             var diffY = rawY - stickCenterY;
@@ -145,9 +158,20 @@ namespace UnityJoycon
 
             var state = new SwitchJoyConHIDInputState
             {
-                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0,
-                rightStick = stick
+                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0
             };
+
+            switch (side)
+            {
+                case Side.Left:
+                    state.leftStick = stick;
+                    break;
+                case Side.Right:
+                    state.rightStick = stick;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(side), side, null);
+            }
 
             return state;
         }
