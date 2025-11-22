@@ -1,5 +1,7 @@
+using System;
 using System.Runtime.InteropServices;
 using UnityEditor;
+using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
 using UnityEngine.InputSystem.Layouts;
@@ -8,7 +10,7 @@ using UnityEngine.InputSystem.Utilities;
 
 namespace UnityJoycon
 {
-    [StructLayout(LayoutKind.Explicit)]
+    [StructLayout(LayoutKind.Sequential)]
     internal struct SwitchJoyConHIDInputState : IInputStateTypeInfo
     {
         public static FourCC Type => new('S', 'J', 'V', 'S'); // Switch Joy-Con Virtual State
@@ -45,8 +47,10 @@ namespace UnityJoycon
         [InputControl(name = "leftShoulder", displayName = "L", layout = "Button", bit = (int)Button.L)]
         [InputControl(name = "leftTrigger", displayName = "ZL", layout = "Button", format = "BIT",
             bit = (int)Button.ZL)]
-        [FieldOffset(0)]
         public uint buttons;
+
+        [InputControl(name = "rightStick", layout = "Stick", format = "VEC2", displayName = "Right Stick")]
+        public Vector2 rightStick;
 
         public enum Button
         {
@@ -96,11 +100,25 @@ namespace UnityJoycon
                 .WithCapability("vendorId", 0x057e).WithCapability("productId", 0x2007));
         }
 
+        // ReSharper disable once InconsistentNaming
         [InputControl(name = "capture", displayName = "Capture")]
         public ButtonControl captureButton { get; protected set; }
 
+        // ReSharper disable once InconsistentNaming
         [InputControl(name = "home", displayName = "Home")]
         public ButtonControl homeButton { get; protected set; }
+
+        private ushort _stickDeadZone;
+        private ushort _stickCenterX;
+        private ushort _stickMinX;
+        private ushort _stickMaxX;
+        private ushort _stickCenterY;
+        private ushort _stickMinY;
+        private ushort _stickMaxY;
+
+        private bool _stickCalibrationDataLoaded;
+        private bool _stickParametersLoaded;
+
 
         unsafe void IInputStateCallbackReceiver.OnStateEvent(InputEventPtr eventPtr)
         {
@@ -114,27 +132,70 @@ namespace UnityJoycon
             // 汎用レポートに変換
             var genericReport = (SwitchHIDGenericInputReport*)stateEvent->state;
 
-            // 標準レポートの場合
-            if (genericReport->reportId == SwitchStandardInputReport.ExpectedReportId)
+            // 標準レポート(IMU)の場合
+            if (genericReport->reportId == 0x30)
             {
-                var data = ((SwitchStandardInputReport*)stateEvent->state)->ToHIDInputReport();
+                // スティックのキャリブレーションデータとパラメータが読み込まれていない場合は無視する
+                if (!_stickCalibrationDataLoaded || !_stickParametersLoaded) return;
+                var data = ((SwitchStandardInputReport*)stateEvent->state)->ToHIDInputReport(
+                    _stickDeadZone,
+                    _stickCenterX,
+                    _stickMinX, _stickMaxX,
+                    _stickCenterY,
+                    _stickMinY, _stickMaxY);
                 InputState.Change(this, data, eventPtr: eventPtr);
+            }
+
+            // 標準レポート(サブコマンド応答)の場合
+            if (genericReport->reportId == 0x21)
+            {
+                var data = (SwitchStandardInputReport*)stateEvent->state;
+                // 否定応答の場合はエラーログ
+                if ((data->subCommandReply.ack & 0x80) == 0)
+                {
+                    Debug.LogError($"Joy-Con sub command 0x{data->subCommandReply.subCommandId:X2} NAK received.");
+                    return;
+                }
+
+                // SPIフラッシュ読み出し応答の場合
+                if (data->subCommandReply.subCommandId == 0x10)
+                {
+                    var address = data->subCommandReply.data[0] |
+                                  (data->subCommandReply.data[1] << 8) |
+                                  (data->subCommandReply.data[2] << 16) |
+                                  (data->subCommandReply.data[3] << 24);
+                    var length = data->subCommandReply.data[4];
+                    var payload = data->subCommandReply.data + 5;
+
+                    Debug.Log($"Joy-Con SPI flash read response received. Address: 0x{address:X8}, Length: {length}");
+
+                    // スティックパラメータの場合
+                    if (address == 0x6098 && length == 18)
+                    {
+                        Debug.Log("Joy-Con stick parameters received.");
+                        _stickDeadZone = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
+                        _stickParametersLoaded = true;
+                    }
+
+                    // スティックキャリブレーションデータの場合
+                    if (address == 0x6046 && length == 9)
+                    {
+                        Debug.Log("Joy-Con stick calibration data received.");
+                        // TODO: 左スティックの場合はパラメータの順番が異なるため修正が必要
+                        _stickCenterX = (ushort)(((payload[1] << 8) & 0xf00) | payload[0]);
+                        _stickCenterY = (ushort)((payload[2] << 4) | (payload[1] >> 4));
+                        _stickMinX = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
+                        _stickMinY = (ushort)((payload[5] << 4) | (payload[4] >> 4));
+                        _stickMaxX = (ushort)(((payload[7] << 8) & 0xf00) | payload[6]);
+                        _stickMaxY = (ushort)((payload[8] << 4) | (payload[7] >> 4));
+                        _stickCalibrationDataLoaded = true;
+                    }
+                }
             }
         }
 
         void IInputStateCallbackReceiver.OnNextUpdate()
         {
-            // const double handshakeRestartTimeout = 2.0;
-            //
-            // var currentTime = Time.realtimeSinceStartupAsDouble;
-            //
-            // if (currentTime >= lastUpdateTime + handshakeRestartTimeout &&
-            //     currentTime >= _handshakeTimer + handshakeRestartTimeout)
-            // {
-            //     _handshakeTimer = currentTime;
-            //     var command = SwitchConfigureReportModeOutput.Create(0x01, 0x30);
-            //     ExecuteCommand(ref command);
-            // }
         }
 
         bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
@@ -147,8 +208,17 @@ namespace UnityJoycon
         {
             base.OnAdded();
 
-            var command = SwitchConfigureReportModeOutput.Create(0x00, 0x30);
-            ExecuteCommand(ref command);
+            // TODO: 左右のスティック毎、ユーザーデータと工場出荷時データ毎で読み出しアドレスを変更する
+            var stickCalibrationCommand = SwitchReadSPIFlashOutput.Create(0x00, 0x6046, 9);
+            ExecuteCommand(ref stickCalibrationCommand);
+
+            var stickParametersCommand = SwitchReadSPIFlashOutput.Create(0x01, 0x6098, 18);
+            ExecuteCommand(ref stickParametersCommand);
+
+            // TODO: IMUキャリブレーションデータの読み出し
+
+            var configureOutputModeCommand = SwitchConfigureReportModeOutput.Create(0x02, 0x30);
+            ExecuteCommand(ref configureOutputModeCommand);
         }
 
         protected override void FinishSetup()
@@ -172,7 +242,6 @@ namespace UnityJoycon
     internal struct SwitchStandardInputReport
     {
         public const int Size = 0x49;
-        public const byte ExpectedReportId = 0x30;
 
         [FieldOffset(0)] public byte reportId;
         [FieldOffset(1)] public byte timer;
@@ -186,17 +255,96 @@ namespace UnityJoycon
         [FieldOffset(9)] public byte right0;
         [FieldOffset(10)] public byte right1;
         [FieldOffset(11)] public byte right2;
+        [FieldOffset(12)] public byte vibrationReport;
 
-        // TODO: IMU or sub command reply
+        // IMU data
+        [FieldOffset(13)] public IMUData imu0;
+        [FieldOffset(25)] public IMUData imu1;
+        [FieldOffset(37)] public IMUData imu2;
 
-        public SwitchJoyConHIDInputState ToHIDInputReport()
+        // Sub command reply data
+        [FieldOffset(13)] public SubCommandReplyData subCommandReply;
+
+        public SwitchJoyConHIDInputState ToHIDInputReport(ushort stickDeadZone, ushort stickCenterX, ushort stickMinX,
+            ushort stickMaxX, ushort stickCenterY, ushort stickMinY, ushort stickMaxY)
         {
+            // TODO: 左スティックの場合は左スティックの値を使用する
+            var rawX = (ushort)(right0 | ((right1 & 0x0f) << 8));
+            var rawY = (ushort)(((right1 & 0xf0) >> 4) | (right2 << 4));
+
+            var diffX = rawX - stickCenterX;
+            var diffY = rawY - stickCenterY;
+
+            if (Math.Abs(diffX) < stickDeadZone) diffX = 0;
+            if (Math.Abs(diffY) < stickDeadZone) diffY = 0;
+
+            var normX = diffX > 0
+                ? (float)diffX / stickMaxX
+                : (float)diffX / stickMinX;
+            var normY = diffY > 0
+                ? (float)diffY / stickMaxY
+                : (float)diffY / stickMinY;
+            var stick = new Vector2(normX, normY);
+
             var state = new SwitchJoyConHIDInputState
             {
-                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0
+                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0,
+                rightStick = stick
             };
 
             return state;
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct IMUData
+    {
+        [FieldOffset(0)] public byte accelX0;
+        [FieldOffset(1)] public byte accelX1;
+        [FieldOffset(2)] public byte accelY0;
+        [FieldOffset(3)] public byte accelY1;
+        [FieldOffset(4)] public byte accelZ0;
+        [FieldOffset(5)] public byte accelZ1;
+        [FieldOffset(6)] public byte gyroX0;
+        [FieldOffset(7)] public byte gyroX1;
+        [FieldOffset(8)] public byte gyroY0;
+        [FieldOffset(9)] public byte gyroY1;
+        [FieldOffset(10)] public byte gyroZ0;
+        [FieldOffset(11)] public byte gyroZ1;
+
+        public (short accelX, short accelY, short accelZ) GetAcceleration()
+        {
+            var accelX = (short)(accelX0 | (accelX1 << 8));
+            var accelY = (short)(accelY0 | (accelY1 << 8));
+            var accelZ = (short)(accelZ0 | (accelZ1 << 8));
+            return (accelX, accelY, accelZ);
+        }
+
+        public (short gyroX, short gyroY, short gyroZ) GetGyroscope()
+        {
+            var gyroX = (short)(gyroX0 | (gyroX1 << 8));
+            var gyroY = (short)(gyroY0 | (gyroY1 << 8));
+            var gyroZ = (short)(gyroZ0 | (gyroZ1 << 8));
+            return (gyroX, gyroY, gyroZ);
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct SubCommandReplyData
+    {
+        [FieldOffset(0)] public byte ack;
+        [FieldOffset(1)] public byte subCommandId;
+
+        // ReSharper disable once InconsistentNaming
+        public unsafe byte* data
+        {
+            get
+            {
+                fixed (SubCommandReplyData* ptr = &this)
+                {
+                    return (byte*)ptr + 2;
+                }
+            }
         }
     }
 
@@ -206,7 +354,7 @@ namespace UnityJoycon
         public static FourCC Type => new('H', 'I', 'D', 'O');
         public FourCC typeStatic => Type;
 
-        public const int Size = InputDeviceCommand.BaseCommandSize + 3;
+        public const int Size = InputDeviceCommand.BaseCommandSize + 12;
 
         [FieldOffset(0)] public InputDeviceCommand baseCommand;
 
@@ -217,7 +365,28 @@ namespace UnityJoycon
         public byte packetNumber;
 
         [FieldOffset(InputDeviceCommand.BaseCommandSize + 2)]
-        public ulong rumbleData;
+        public byte rumbleData0;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 3)]
+        public byte rumbleData1;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 4)]
+        public byte rumbleData2;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 5)]
+        public byte rumbleData3;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 6)]
+        public byte rumbleData4;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 7)]
+        public byte rumbleData5;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 8)]
+        public byte rumbleData6;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 9)]
+        public byte rumbleData7;
 
         [FieldOffset(InputDeviceCommand.BaseCommandSize + 10)]
         public byte subCommandConfigureReportMode;
@@ -232,9 +401,99 @@ namespace UnityJoycon
                 baseCommand = new InputDeviceCommand(Type, Size),
                 reportId = 0x01,
                 packetNumber = packetNumber,
-                rumbleData = 0x00_01_40_40_00_01_40_40,
+                rumbleData0 = 0x00,
+                rumbleData1 = 0x01,
+                rumbleData2 = 0x40,
+                rumbleData3 = 0x40,
+                rumbleData4 = 0x00,
+                rumbleData5 = 0x01,
+                rumbleData6 = 0x40,
+                rumbleData7 = 0x40,
                 subCommandConfigureReportMode = 0x03,
                 mode = mode
+            };
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = Size)]
+    internal struct SwitchReadSPIFlashOutput : IInputDeviceCommandInfo
+    {
+        public static FourCC Type => new('H', 'I', 'D', 'O');
+        public FourCC typeStatic => Type;
+
+        public const int Size = InputDeviceCommand.BaseCommandSize + 0x16;
+
+        [FieldOffset(0)] public InputDeviceCommand baseCommand;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 0)]
+        public byte reportId;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 1)]
+        public byte packetNumber;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 2)]
+        public byte rumbleData0;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 3)]
+        public byte rumbleData1;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 4)]
+        public byte rumbleData2;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 5)]
+        public byte rumbleData3;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 6)]
+        public byte rumbleData4;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 7)]
+        public byte rumbleData5;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 8)]
+        public byte rumbleData6;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 9)]
+        public byte rumbleData7;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 10)]
+        public byte subCommandReadSPIFlash;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 11)]
+        public byte address0;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 12)]
+        public byte address1;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 13)]
+        public byte address2;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 14)]
+        public byte address3;
+
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + 15)]
+        public byte length;
+
+        public static SwitchReadSPIFlashOutput Create(byte packetNumber, uint address, byte length)
+        {
+            return new SwitchReadSPIFlashOutput
+            {
+                baseCommand = new InputDeviceCommand(Type, Size),
+                reportId = 0x01,
+                packetNumber = packetNumber,
+                rumbleData0 = 0x00,
+                rumbleData1 = 0x01,
+                rumbleData2 = 0x40,
+                rumbleData3 = 0x40,
+                rumbleData4 = 0x00,
+                rumbleData5 = 0x01,
+                rumbleData6 = 0x40,
+                rumbleData7 = 0x40,
+                subCommandReadSPIFlash = 0x10,
+                address0 = (byte)(address & 0xFF),
+                address1 = (byte)((address >> 8) & 0xFF),
+                address2 = (byte)((address >> 16) & 0xFF),
+                address3 = (byte)((address >> 24) & 0xFF),
+                length = length
             };
         }
     }
