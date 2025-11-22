@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
+using UnityEngine.InputSystem.HID;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
@@ -90,15 +91,31 @@ namespace UnityJoycon
         }
     }
 
+#if UNITY_EDITOR
     [InitializeOnLoad]
+#endif
     [InputControlLayout(displayName = "Switch Joy-Con", stateType = typeof(SwitchJoyConHIDInputState))]
     public class SwitchJoyConHID : Gamepad, IInputStateCallbackReceiver
     {
+        private const int VendorId = 0x057e;
+        private const int ProductIdLeft = 0x2006;
+        private const int ProductIdRight = 0x2007;
+
         static SwitchJoyConHID()
         {
             InputSystem.RegisterLayout<SwitchJoyConHID>(matches: new InputDeviceMatcher().WithInterface("HID")
-                .WithCapability("vendorId", 0x057e).WithCapability("productId", 0x2007));
+                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdLeft));
+            InputSystem.RegisterLayout<SwitchJoyConHID>(matches: new InputDeviceMatcher().WithInterface("HID")
+                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdRight));
         }
+
+        // ランタイムでスタティックコンストラクタを実行するためのダミーメソッド
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void Initialize()
+        {
+        }
+
+        private Side _side;
 
         // ReSharper disable once InconsistentNaming
         [InputControl(name = "capture", displayName = "Capture")]
@@ -117,8 +134,10 @@ namespace UnityJoycon
         private ushort _stickMaxY;
 
         private bool _stickCalibrationDataLoaded;
+        private bool _stickUserCalibrationDataLoaded;
         private bool _stickParametersLoaded;
 
+        private double _lastCommandSentTime;
 
         unsafe void IInputStateCallbackReceiver.OnStateEvent(InputEventPtr eventPtr)
         {
@@ -161,26 +180,43 @@ namespace UnityJoycon
                 if (data->subCommandReply.subCommandId == 0x10)
                 {
                     var address = data->subCommandReply.data[0] |
-                                  (data->subCommandReply.data[1] << 8) |
-                                  (data->subCommandReply.data[2] << 16) |
-                                  (data->subCommandReply.data[3] << 24);
+                                  ((uint)data->subCommandReply.data[1] << 8) |
+                                  ((uint)data->subCommandReply.data[2] << 16) |
+                                  ((uint)data->subCommandReply.data[3] << 24);
                     var length = data->subCommandReply.data[4];
                     var payload = data->subCommandReply.data + 5;
 
-                    Debug.Log($"Joy-Con SPI flash read response received. Address: 0x{address:X8}, Length: {length}");
-
                     // スティックパラメータの場合
-                    if (address == 0x6098 && length == 18)
+                    if (address == (uint)GetStickParametersAddress() && length == 18)
                     {
-                        Debug.Log("Joy-Con stick parameters received.");
                         _stickDeadZone = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
                         _stickParametersLoaded = true;
                     }
 
                     // スティックキャリブレーションデータの場合
-                    if (address == 0x6046 && length == 9)
+                    // ユーザーデータ優先で読み込む
+                    if (address == (uint)GetStickUserCalibrationAddress() && length == 9)
                     {
-                        Debug.Log("Joy-Con stick calibration data received.");
+                        _stickUserCalibrationDataLoaded = true;
+                        // 全て0xFFの場合はユーザーデータが未設定とみなす
+                        var hasUserData = payload[0] != 0xFF || payload[1] != 0xFF || payload[2] != 0xFF ||
+                                          payload[3] != 0xFF || payload[4] != 0xFF || payload[5] != 0xFF ||
+                                          payload[6] != 0xFF || payload[7] != 0xFF || payload[8] != 0xFF;
+                        if (!hasUserData) return;
+
+                        // TODO: 左スティックの場合はパラメータの順番が異なるため修正が必要
+                        _stickCenterX = (ushort)(((payload[1] << 8) & 0xf00) | payload[0]);
+                        _stickCenterY = (ushort)((payload[2] << 4) | (payload[1] >> 4));
+                        _stickMinX = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
+                        _stickMinY = (ushort)((payload[5] << 4) | (payload[4] >> 4));
+                        _stickMaxX = (ushort)(((payload[7] << 8) & 0xf00) | payload[6]);
+                        _stickMaxY = (ushort)((payload[8] << 4) | (payload[7] >> 4));
+                        _stickCalibrationDataLoaded = true;
+                    }
+
+                    // 工場出荷時データの場合
+                    if (address == (uint)GetStickFactoryCalibrationAddress() && length == 9)
+                    {
                         // TODO: 左スティックの場合はパラメータの順番が異なるため修正が必要
                         _stickCenterX = (ushort)(((payload[1] << 8) & 0xf00) | payload[0]);
                         _stickCenterY = (ushort)((payload[2] << 4) | (payload[1] >> 4));
@@ -196,6 +232,46 @@ namespace UnityJoycon
 
         void IInputStateCallbackReceiver.OnNextUpdate()
         {
+            // コマンド送信間隔(s)
+            const double commandInterval = 0.1;
+
+            // 直前でコマンドを送信していた場合はスキップする
+            if (lastUpdateTime < _lastCommandSentTime + commandInterval) return;
+
+            // スティックパラメータが読み込まれていない場合
+            if (!_stickParametersLoaded)
+            {
+                Debug.Log("Requesting stick parameters...");
+                var stickParametersCommand =
+                    SwitchReadSPIFlashOutput.Create(0x01, GetStickParametersAddress(), 18);
+                ExecuteCommand(ref stickParametersCommand);
+                _lastCommandSentTime = lastUpdateTime;
+                return;
+            }
+
+            // スティックキャリブレーションデータが読み込まれていない場合
+            if (!_stickCalibrationDataLoaded)
+            {
+                // ユーザーデータを優先的に読み込む
+                if (!_stickUserCalibrationDataLoaded)
+                {
+                    Debug.Log("Requesting stick user calibration data...");
+                    var stickUserCalibrationCommand =
+                        SwitchReadSPIFlashOutput.Create(0x00, GetStickUserCalibrationAddress(), 9);
+                    ExecuteCommand(ref stickUserCalibrationCommand);
+                }
+                else
+                {
+                    Debug.Log("Requesting stick factory calibration data...");
+                    var stickCalibrationCommand =
+                        SwitchReadSPIFlashOutput.Create(0x00, GetStickFactoryCalibrationAddress(), 9);
+                    ExecuteCommand(ref stickCalibrationCommand);
+                }
+
+                _lastCommandSentTime = lastUpdateTime;
+            }
+
+            // TODO: IMUキャリブレーションデータの読み出し
         }
 
         bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
@@ -208,15 +284,15 @@ namespace UnityJoycon
         {
             base.OnAdded();
 
-            // TODO: 左右のスティック毎、ユーザーデータと工場出荷時データ毎で読み出しアドレスを変更する
-            var stickCalibrationCommand = SwitchReadSPIFlashOutput.Create(0x00, 0x6046, 9);
-            ExecuteCommand(ref stickCalibrationCommand);
+            var descriptor = HID.HIDDeviceDescriptor.FromJson(description.capabilities);
+            _side = descriptor.productId switch
+            {
+                ProductIdLeft => Side.Left,
+                ProductIdRight => Side.Right,
+                _ => throw new InvalidOperationException("Invalid product ID for Switch Joy-Con.")
+            };
 
-            var stickParametersCommand = SwitchReadSPIFlashOutput.Create(0x01, 0x6098, 18);
-            ExecuteCommand(ref stickParametersCommand);
-
-            // TODO: IMUキャリブレーションデータの読み出し
-
+            // 出力モードを標準モードに設定
             var configureOutputModeCommand = SwitchConfigureReportModeOutput.Create(0x02, 0x30);
             ExecuteCommand(ref configureOutputModeCommand);
         }
@@ -227,6 +303,42 @@ namespace UnityJoycon
 
             captureButton = GetChildControl<ButtonControl>("capture");
             homeButton = GetChildControl<ButtonControl>("home");
+        }
+
+        private SwitchReadSPIFlashOutput.Address GetStickUserCalibrationAddress()
+        {
+            return _side switch
+            {
+                Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickUserCalibration,
+                Side.Right => SwitchReadSPIFlashOutput.Address.RightStickUserCalibration,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+
+        private SwitchReadSPIFlashOutput.Address GetStickFactoryCalibrationAddress()
+        {
+            return _side switch
+            {
+                Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickFactoryCalibration,
+                Side.Right => SwitchReadSPIFlashOutput.Address.RightStickFactoryCalibration,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+
+        private SwitchReadSPIFlashOutput.Address GetStickParametersAddress()
+        {
+            return _side switch
+            {
+                Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickParameters,
+                Side.Right => SwitchReadSPIFlashOutput.Address.RightStickParameters,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+
+        public enum Side
+        {
+            Left,
+            Right
         }
     }
 
@@ -473,8 +585,10 @@ namespace UnityJoycon
         [FieldOffset(InputDeviceCommand.BaseCommandSize + 15)]
         public byte length;
 
-        public static SwitchReadSPIFlashOutput Create(byte packetNumber, uint address, byte length)
+        public static SwitchReadSPIFlashOutput Create(byte packetNumber, Address address, byte length)
         {
+            var addr = (uint)address;
+
             return new SwitchReadSPIFlashOutput
             {
                 baseCommand = new InputDeviceCommand(Type, Size),
@@ -489,12 +603,25 @@ namespace UnityJoycon
                 rumbleData6 = 0x40,
                 rumbleData7 = 0x40,
                 subCommandReadSPIFlash = 0x10,
-                address0 = (byte)(address & 0xFF),
-                address1 = (byte)((address >> 8) & 0xFF),
-                address2 = (byte)((address >> 16) & 0xFF),
-                address3 = (byte)((address >> 24) & 0xFF),
+                address0 = (byte)(addr & 0xFF),
+                address1 = (byte)((addr >> 8) & 0xFF),
+                address2 = (byte)((addr >> 16) & 0xFF),
+                address3 = (byte)((addr >> 24) & 0xFF),
                 length = length
             };
+        }
+
+        public enum Address : uint
+        {
+            LeftStickUserCalibration = 0x8012,
+            RightStickUserCalibration = 0x801d,
+            LeftStickFactoryCalibration = 0x603d,
+            RightStickFactoryCalibration = 0x6046,
+            LeftStickParameters = 0x6086,
+            RightStickParameters = 0x6098,
+            ImuFactoryCalibration = 0x6020,
+            ImuUserCalibration = 0x8028,
+            ImuParameters = 0x6080
         }
     }
 }
