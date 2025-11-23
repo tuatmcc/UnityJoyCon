@@ -1,6 +1,6 @@
 # UnityJoyCon
 
-UnityJoyCon は Nintendo Switch の Joy-Con を Unity Input System に直接統合するライブラリです。Joy-Con を HID デバイスとして自動認識し、ボタン入力・スティック座標・加速度 / ジャイロの生データをそのまま InputDevice から取得できます。外部の hidapi や `System.Threading.Channels` への依存はありません。
+UnityJoyCon は Nintendo Switch の Joy-Con を Unity Input System に直接統合するライブラリです。Joy-Con を HID デバイスとして自動認識し、ボタン入力・スティック座標・加速度 / ジャイロの生データをそのまま InputDevice から取得できます。
 
 ## 特徴
 - Unity Input System へのレイアウトを自動登録し、左右 Joy-Con を `SwitchJoyConLeftHID` / `SwitchJoyConRightHID` として認識
@@ -10,7 +10,7 @@ UnityJoyCon は Nintendo Switch の Joy-Con を Unity Input System に直接統�
 ## 前提条件
 - Unity 2022.3.62f3 以降（推奨）
 - `com.unity.inputsystem` 1.14.2（本パッケージの依存として自動導入されます）
-- Joy-Con を事前に OS と Bluetooth ペアリングしておくこと
+- Joy-Con を OS の Bluetooth 設定で事前にペアリングしておくこと
 
 ## 導入方法
 
@@ -43,7 +43,7 @@ cd UnityJoyCon
 `Assets/SampleJoyCon.unity` を開き、Joy-Con をペアリングした状態で Play モードに入ると、ボタン・スティック・IMU の値をリアルタイムで確認できます。
 
 ## クイックスタート
-最初に見つかった Joy-Con から入力を読み取るシンプルなサンプルです。Input System によって Joy-Con が認識されると、`SwitchJoyConLeftHID.all` / `SwitchJoyConRightHID.all` に追加されます。実運用では InputAction（Input Actions アセットまたは `InputAction` クラス）にバインドして扱うのが基本です。
+最初に見つかった Joy-Con から入力を読み取るシンプルなサンプルです。Input System によって Joy-Con が認識されると、`InputSystem.GetDevice<SwitchJoyConLeftHID>()` / `InputSystem.GetDevice<SwitchJoyConRightHID>()` で取得できます。実運用では InputAction（Input Actions アセットまたは `InputAction` クラス）にバインドして扱うのが基本です。
 
 ```csharp
 using System.Linq;
@@ -56,11 +56,17 @@ public class JoyConReader : MonoBehaviour
     private SwitchJoyConLeftHID _left;
     private SwitchJoyConRightHID _right;
 
+    private void Start()
+    {
+        _left = InputSystem.GetDevice<SwitchJoyConLeftHID>();
+        _right = InputSystem.GetDevice<SwitchJoyConRightHID>();
+    }
+
     private void Update()
     {
-        // シーン再生中にペアリングされた場合も追従できるよう、毎フレーム取得しています
-        _left ??= SwitchJoyConLeftHID.all.FirstOrDefault();
-        _right ??= SwitchJoyConRightHID.all.FirstOrDefault();
+        // シーン再生中にペアリングされた場合も追従できるよう、見つからなければ再取得します
+        _left ??= InputSystem.GetDevice<SwitchJoyConLeftHID>();
+        _right ??= InputSystem.GetDevice<SwitchJoyConRightHID>();
 
         if (_left != null && _left.leftTrigger.wasPressedThisFrame)
             Debug.Log("ZL が押されました");
@@ -103,8 +109,8 @@ public class JoyConActions : MonoBehaviour
 ```
 
 ## サンプルシーン
-- `Assets/JoyConRight.cs` は Joy-Con のステートを UI に反映する参考スクリプトです。
-- `Assets/SampleJoyCon.unity` を Play すると、ボタンが点灯し IMU が TextMeshPro で表示されます。
+- `Assets/JoyConRight.cs` は Joy-Con のステートを取得し GameObject に反映するスクリプトです。
+- `Assets/SampleJoyCon.unity` を実行すると、押したボタンの色が変化し、 IMU のデータが UI で表示されます。
 
 ## ライセンス
-- パッケージ本体: MIT License
+- MIT License
