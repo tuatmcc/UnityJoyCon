@@ -21,15 +21,18 @@ namespace UnityJoyCon
         private const byte IMUParameterLength = 6;
         private const byte IMUCalibrationLength = 24;
 
-        // ReSharper disable InconsistentNaming
-        public Vector3Control accelerometer { get; private set; }
-        public Vector3Control gyroscope { get; private set; }
-
-        public static SwitchJoyConHID current { get; private set; }
-        public new static IReadOnlyList<SwitchJoyConHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
-
         private static readonly List<SwitchJoyConHID> AllDevices = new();
+        private byte _commandPacketNumber;
+
+        private bool _haveParsedHIDDescriptor;
+        private HID.HIDDeviceDescriptor _hidDeviceDescriptor;
+        private IMUCalibrationState _imuCalibration;
+        private bool _imuEnabled;
+
+        private double _lastCommandSentTime;
+        private double _lastStandardInputReceivedTime;
+
+        private StickCalibrationState _stickCalibration;
 
         public virtual Side Side => HIDDeviceDescriptor.productId switch
         {
@@ -48,23 +51,6 @@ namespace UnityJoyCon
                 _haveParsedHIDDescriptor = true;
                 return _hidDeviceDescriptor;
             }
-        }
-
-        private bool _haveParsedHIDDescriptor;
-        private HID.HIDDeviceDescriptor _hidDeviceDescriptor;
-
-        private StickCalibrationState _stickCalibration;
-        private IMUCalibrationState _imuCalibration;
-        private bool _imuEnabled;
-
-        private double _lastCommandSentTime;
-        private double _lastStandardInputReceivedTime;
-        private byte _commandPacketNumber;
-
-        private enum ReportId : byte
-        {
-            StandardInput = 0x30,
-            SubCommandReply = 0x21
         }
 
         void IInputStateCallbackReceiver.OnStateEvent(InputEventPtr eventPtr)
@@ -375,6 +361,12 @@ namespace UnityJoyCon
             };
         }
 
+        private enum ReportId : byte
+        {
+            StandardInput = 0x30,
+            SubCommandReply = 0x21
+        }
+
         private struct StickCalibrationState
         {
             public bool ParametersLoaded { get; private set; }
@@ -536,6 +528,15 @@ namespace UnityJoyCon
                 return (short)(data[index] | (data[index + 1] << 8));
             }
         }
+
+        // ReSharper disable InconsistentNaming
+        public Vector3Control accelerometer { get; private set; }
+        public Vector3Control gyroscope { get; private set; }
+
+        public static SwitchJoyConHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConHID> all => AllDevices;
+        // ReSharper restore InconsistentNaming
     }
 
 #if UNITY_EDITOR
@@ -544,30 +545,15 @@ namespace UnityJoyCon
     [InputControlLayout(displayName = "Switch Joy-Con (L)", stateType = typeof(SwitchJoyConLeftHIDInputState))]
     public class SwitchJoyConLeftHID : SwitchJoyConHID
     {
-        // ReSharper disable InconsistentNaming
-        public DpadControl dpad { get; private set; }
-        public ButtonControl smallLeftShoulder { get; private set; }
-        public ButtonControl smallRightShoulder { get; private set; }
-        public ButtonControl leftShoulder { get; private set; }
-        public ButtonControl leftTrigger { get; private set; }
-        public ButtonControl selectButton { get; private set; }
-        public ButtonControl captureButton { get; private set; }
-        public ButtonControl leftStickButton { get; private set; }
-        public StickControl leftStick { get; private set; }
-
-        public new static SwitchJoyConLeftHID current { get; private set; }
-        public new static IReadOnlyList<SwitchJoyConLeftHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
-
         private static readonly List<SwitchJoyConLeftHID> AllDevices = new();
-
-        public override Side Side => Side.Left;
 
         static SwitchJoyConLeftHID()
         {
             InputSystem.RegisterLayout<SwitchJoyConLeftHID>(matches: new InputDeviceMatcher().WithInterface("HID")
                 .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdLeft));
         }
+
+        public override Side Side => Side.Left;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
@@ -607,6 +593,22 @@ namespace UnityJoyCon
             leftStickButton = GetChildControl<ButtonControl>("leftStickPress");
             leftStick = GetChildControl<StickControl>("leftStick");
         }
+
+        // ReSharper disable InconsistentNaming
+        public DpadControl dpad { get; private set; }
+        public ButtonControl smallLeftShoulder { get; private set; }
+        public ButtonControl smallRightShoulder { get; private set; }
+        public ButtonControl leftShoulder { get; private set; }
+        public ButtonControl leftTrigger { get; private set; }
+        public ButtonControl selectButton { get; private set; }
+        public ButtonControl captureButton { get; private set; }
+        public ButtonControl leftStickButton { get; private set; }
+        public StickControl leftStick { get; private set; }
+
+        public new static SwitchJoyConLeftHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConLeftHID> all => AllDevices;
+        // ReSharper restore InconsistentNaming
     }
 
 #if UNITY_EDITOR
@@ -615,27 +617,7 @@ namespace UnityJoyCon
     [InputControlLayout(displayName = "Switch Joy-Con (R)", stateType = typeof(SwitchJoyConRightHIDInputState))]
     public class SwitchJoyConRightHID : SwitchJoyConHID
     {
-        // ReSharper disable InconsistentNaming
-        public ButtonControl buttonWest { get; private set; }
-        public ButtonControl buttonNorth { get; private set; }
-        public ButtonControl buttonSouth { get; private set; }
-        public ButtonControl buttonEast { get; private set; }
-        public ButtonControl smallLeftShoulder { get; private set; }
-        public ButtonControl smallRightShoulder { get; private set; }
-        public ButtonControl rightShoulder { get; private set; }
-        public ButtonControl rightTrigger { get; private set; }
-        public ButtonControl startButton { get; private set; }
-        public ButtonControl homeButton { get; private set; }
-        public ButtonControl rightStickButton { get; private set; }
-        public StickControl rightStick { get; private set; }
-
-        public new static SwitchJoyConRightHID current { get; private set; }
-        public new static IReadOnlyList<SwitchJoyConRightHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
-
         private static readonly List<SwitchJoyConRightHID> AllDevices = new();
-
-        public override Side Side => Side.Right;
 
 
         static SwitchJoyConRightHID()
@@ -643,6 +625,8 @@ namespace UnityJoyCon
             InputSystem.RegisterLayout<SwitchJoyConRightHID>(matches: new InputDeviceMatcher().WithInterface("HID")
                 .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdRight));
         }
+
+        public override Side Side => Side.Right;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
@@ -685,5 +669,24 @@ namespace UnityJoyCon
             base.MakeCurrent();
             current = this;
         }
+
+        // ReSharper disable InconsistentNaming
+        public ButtonControl buttonWest { get; private set; }
+        public ButtonControl buttonNorth { get; private set; }
+        public ButtonControl buttonSouth { get; private set; }
+        public ButtonControl buttonEast { get; private set; }
+        public ButtonControl smallLeftShoulder { get; private set; }
+        public ButtonControl smallRightShoulder { get; private set; }
+        public ButtonControl rightShoulder { get; private set; }
+        public ButtonControl rightTrigger { get; private set; }
+        public ButtonControl startButton { get; private set; }
+        public ButtonControl homeButton { get; private set; }
+        public ButtonControl rightStickButton { get; private set; }
+        public StickControl rightStick { get; private set; }
+
+        public new static SwitchJoyConRightHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConRightHID> all => AllDevices;
+        // ReSharper restore InconsistentNaming
     }
 }

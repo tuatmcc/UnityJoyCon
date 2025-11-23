@@ -1,0 +1,13 @@
+# Top-most EditorConfig file
+root = true
+
+# エンコードと改行コードの設定
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+# C#のインデント設定
+[*.cs]
+indent_style = space
+indent_size = 4
