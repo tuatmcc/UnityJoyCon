@@ -151,7 +151,7 @@ namespace UnityJoycon
             }
 
             // IMUデータは3フレームあるが、最後のフレーム（imu2）を使用する
-            var imu = ConvertIMUData(imu2, imuParams);
+            var imu = ConvertIMUData(imu2, imuParams, side);
             state.accelerometer = imu.Acceleration;
             state.gyroscope = imu.AngularVelocity;
 
@@ -198,20 +198,22 @@ namespace UnityJoycon
             return new Vector2(normX, normY);
         }
 
-        private static IMUFrame ConvertIMUData(IMUData data, IMUNormalizationParameters parameters)
+        private static IMUFrame ConvertIMUData(IMUData data, IMUNormalizationParameters parameters, Side side)
         {
             var (rawAccelX, rawAccelY, rawAccelZ) = data.GetAcceleration();
             var (rawGyroX, rawGyroY, rawGyroZ) = data.GetGyroscope();
 
             var acceleration = new Vector3(
-                ConvertAccel(rawAccelX, parameters.AccelX),
-                ConvertAccel(rawAccelY, parameters.AccelY),
-                ConvertAccel(rawAccelZ, parameters.AccelZ));
+                (side == Side.Left ? -1f : 1f) * ConvertAccel(rawAccelY, parameters.AccelY),
+                (side == Side.Left ? 1f : -1f) * ConvertAccel(rawAccelZ, parameters.AccelZ),
+                ConvertAccel(rawAccelX, parameters.AccelX)
+            );
 
             var angularVelocity = new Vector3(
-                ConvertGyro(rawGyroX, parameters.GyroX),
-                ConvertGyro(rawGyroY, parameters.GyroY),
-                ConvertGyro(rawGyroZ, parameters.GyroZ));
+                (side == Side.Left ? -1f : 1f) * ConvertGyro(rawGyroY, parameters.GyroY),
+                (side == Side.Left ? 1f : -1f) * ConvertGyro(rawGyroZ, parameters.GyroZ),
+                ConvertGyro(rawGyroX, parameters.GyroX)
+            );
 
             return new IMUFrame(acceleration, angularVelocity);
         }
