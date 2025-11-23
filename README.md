@@ -10,8 +10,8 @@ Joy-Con を HID デバイスとして自動認識し、ボタン・スティッ�
 
 ## 導入方法
 
-Package Manager で `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.0` を Git パッケージとして追加します。
-アップデートしたい場合は `#v0.2.0` の部分を最新のバージョンに変更してください。
+Package Manager で `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.1` を Git パッケージとして追加します。
+アップデートしたい場合は `#v0.2.1` の部分を最新のバージョンに変更してください。
 
 ### manifest.json を直接編集する
 
@@ -20,7 +20,7 @@ Package Manager で `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/co
 ```diff
  {
    "dependencies": {
-+    "com.tuatmcc.unityjoycon": "https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.0"
++    "com.tuatmcc.unityjoycon": "https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.1"
    }
  }
 ```
@@ -29,7 +29,7 @@ Package Manager で `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/co
 
 1. `Window > Package Manager` を開きます。
 2. 左上の `+` ボタンから `Add package from git URL...` を選択します。
-3. `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.0` を入力して `Add` します。
+3. `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.1` を入力して `Add` します。
 
 ## 使い方
 パッケージ導入後はレイアウト登録と初期化が自動で行われ、Joy-Con を OS 側でペアリングするだけで Unity Input System に現れます。手動の初期化や特別なセットアップは不要です。
