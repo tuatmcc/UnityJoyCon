@@ -133,9 +133,9 @@ namespace UnityJoycon
         public SwitchJoyConHIDInputState ToHIDInputReport(
             Side side,
             StickNormalizationParameters stickParams,
-            ImuNormalizationParameters imuParams)
+            IMUNormalizationParameters imuParams)
         {
-            var stick = NormalizeStick(ReadStick(side), stickParams);
+            var stick = ConvertStick(ReadStick(side), stickParams);
             var state = CreateButtonState();
 
             switch (side)
@@ -151,21 +151,11 @@ namespace UnityJoycon
             }
 
             // IMUデータは3フレームあるが、最後のフレーム（imu2）を使用する
-            var imu = ConvertImuData(imu2, imuParams);
+            var imu = ConvertIMUData(imu2, imuParams);
             state.accelerometer = imu.Acceleration;
             state.gyroscope = imu.AngularVelocity;
 
             return state;
-        }
-
-        public ImuFrame[] ToIMUFrames(ImuNormalizationParameters parameters)
-        {
-            return new[]
-            {
-                ConvertImuData(imu0, parameters),
-                ConvertImuData(imu1, parameters),
-                ConvertImuData(imu2, parameters)
-            };
         }
 
         private SwitchJoyConHIDInputState CreateButtonState()
@@ -190,7 +180,7 @@ namespace UnityJoycon
             };
         }
 
-        private static Vector2 NormalizeStick(StickRaw raw, StickNormalizationParameters parameters)
+        private static Vector2 ConvertStick(StickRaw raw, StickNormalizationParameters parameters)
         {
             var diffX = raw.X - parameters.X.Center;
             var diffY = raw.Y - parameters.Y.Center;
@@ -208,28 +198,34 @@ namespace UnityJoycon
             return new Vector2(normX, normY);
         }
 
-        private static ImuFrame ConvertImuData(IMUData data, ImuNormalizationParameters parameters)
+        private static IMUFrame ConvertIMUData(IMUData data, IMUNormalizationParameters parameters)
         {
-            var (accelX, accelY, accelZ) = data.GetAcceleration();
-            var (gyroX, gyroY, gyroZ) = data.GetGyroscope();
+            var (rawAccelX, rawAccelY, rawAccelZ) = data.GetAcceleration();
+            var (rawGyroX, rawGyroY, rawGyroZ) = data.GetGyroscope();
 
             var acceleration = new Vector3(
-                accelX * parameters.AccelX.Scale,
-                accelY * parameters.AccelY.Scale,
-                accelZ * parameters.AccelZ.Scale);
+                ConvertAccel(rawAccelX, parameters.AccelX),
+                ConvertAccel(rawAccelY, parameters.AccelY),
+                ConvertAccel(rawAccelZ, parameters.AccelZ));
 
             var angularVelocity = new Vector3(
-                NormalizeGyro(gyroX, parameters.GyroX),
-                NormalizeGyro(gyroY, parameters.GyroY),
-                NormalizeGyro(gyroZ, parameters.GyroZ));
+                ConvertGyro(rawGyroX, parameters.GyroX),
+                ConvertGyro(rawGyroY, parameters.GyroY),
+                ConvertGyro(rawGyroZ, parameters.GyroZ));
 
-            return new ImuFrame(acceleration, angularVelocity);
+            return new IMUFrame(acceleration, angularVelocity);
         }
 
-        private static float NormalizeGyro(short raw, ImuNormalizationParameters.GyroAxis axis)
+        private static float ConvertAccel(short raw, IMUNormalizationParameters.AccelAxis axis)
         {
-            var diff = raw - axis.Offset;
-            return diff * axis.Scale;
+            var accelCoefficient = 1f / (axis.Coefficient - axis.Origin) * 4f;
+            return raw * accelCoefficient;
+        }
+
+        private static float ConvertGyro(short raw, IMUNormalizationParameters.GyroAxis axis)
+        {
+            var gyroCoefficient = 936f / (axis.Coefficient - axis.Offset);
+            return (raw - axis.Offset) * gyroCoefficient;
         }
 
         public bool IsEnabledIMU()
@@ -279,9 +275,9 @@ namespace UnityJoycon
             }
         }
 
-        internal readonly struct ImuNormalizationParameters
+        internal readonly struct IMUNormalizationParameters
         {
-            public ImuNormalizationParameters(
+            public IMUNormalizationParameters(
                 AccelAxis accelX, AccelAxis accelY, AccelAxis accelZ,
                 GyroAxis gyroX, GyroAxis gyroY, GyroAxis gyroZ)
             {
@@ -303,34 +299,34 @@ namespace UnityJoycon
 
             internal readonly struct AccelAxis
             {
-                public AccelAxis(float scale)
+                public AccelAxis(short origin, short horizontalOffset, short coefficient)
                 {
-                    Scale = scale;
+                    Origin = origin;
+                    HorizontalOffset = horizontalOffset;
+                    Coefficient = coefficient;
                 }
 
-                /// <summary>生データに乗算するスケール（gに換算）</summary>
-                public float Scale { get; }
+                public short Origin { get; }
+                public short HorizontalOffset { get; }
+                public short Coefficient { get; }
             }
 
             internal readonly struct GyroAxis
             {
-                public GyroAxis(short offset, float scale)
+                public GyroAxis(short offset, short coefficient)
                 {
                     Offset = offset;
-                    Scale = scale;
+                    Coefficient = coefficient;
                 }
 
-                /// <summary>ゼロ点補正値</summary>
                 public short Offset { get; }
-
-                /// <summary>生データに乗算するスケール（deg/sに換算）</summary>
-                public float Scale { get; }
+                public short Coefficient { get; }
             }
         }
 
-        internal readonly struct ImuFrame
+        internal readonly struct IMUFrame
         {
-            public ImuFrame(Vector3 acceleration, Vector3 angularVelocity)
+            public IMUFrame(Vector3 acceleration, Vector3 angularVelocity)
             {
                 Acceleration = acceleration;
                 AngularVelocity = angularVelocity;
