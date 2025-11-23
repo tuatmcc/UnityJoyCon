@@ -34,13 +34,14 @@ namespace UnityJoycon
         private double _lastStandardInputReceivedTime;
         private byte _commandPacketNumber;
 
-        // ReSharper disable once InconsistentNaming
-        [InputControl(name = "capture", displayName = "Capture")]
-        public ButtonControl captureButton { get; protected set; }
-
-        // ReSharper disable once InconsistentNaming
-        [InputControl(name = "home", displayName = "Home")]
-        public ButtonControl homeButton { get; protected set; }
+        // ReSharper disable InconsistentNaming
+        public ButtonControl rightSmallRightShoulder { get; private set; }
+        public ButtonControl rightSmallLeftShoulder { get; private set; }
+        public ButtonControl captureButton { get; private set; }
+        public ButtonControl homeButton { get; private set; }
+        public Vector3Control accelerometer { get; private set; }
+        public Vector3Control gyroscope { get; private set; }
+        // ReSharper restore InconsistentNaming
 
         private enum ReportId : byte
         {
@@ -105,8 +106,12 @@ namespace UnityJoycon
         {
             base.FinishSetup();
 
+            rightSmallRightShoulder = GetChildControl<ButtonControl>("rightSmallRightShoulder");
+            rightSmallLeftShoulder = GetChildControl<ButtonControl>("rightSmallLeftShoulder");
             captureButton = GetChildControl<ButtonControl>("capture");
             homeButton = GetChildControl<ButtonControl>("home");
+            accelerometer = GetChildControl<Vector3Control>("accelerometer");
+            gyroscope = GetChildControl<Vector3Control>("gyroscope");
         }
 
         private bool ShouldSendCommand()
