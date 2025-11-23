@@ -175,6 +175,22 @@ namespace UnityJoycon
 
             return state;
         }
+
+        public bool IsEnabledIMU()
+        {
+            unsafe
+            {
+                fixed (SwitchStandardInputReport* ptr = &this)
+                {
+                    // IMU領域が全て0ならIMU無効とみなす
+                    for (var i = 13; i < 49; i++)
+                        if (((byte*)ptr)[i] != 0)
+                            return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     [StructLayout(LayoutKind.Explicit)]

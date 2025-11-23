@@ -5,154 +5,70 @@ using UnityEngine.InputSystem.Utilities;
 namespace UnityJoycon
 {
     [StructLayout(LayoutKind.Explicit, Size = Size)]
-    internal struct SwitchConfigureReportModeOutput : IInputDeviceCommandInfo
+    internal struct SwitchGenericSubCommandOutput : IInputDeviceCommandInfo
     {
         public static FourCC Type => new('H', 'I', 'D', 'O');
         public FourCC typeStatic => Type;
 
-        public const int Size = InputDeviceCommand.BaseCommandSize + 12;
+        public const int Size = InputDeviceCommand.BaseCommandSize + SubCommandBase.Size + 1;
 
         [FieldOffset(0)] public InputDeviceCommand baseCommand;
 
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 0)]
-        public byte reportId;
+        [FieldOffset(InputDeviceCommand.BaseCommandSize)]
+        public SubCommandBase subCommandBase;
 
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 1)]
-        public byte packetNumber;
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + SubCommandBase.Size)]
+        public byte data;
 
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 2)]
-        public byte rumbleData0;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 3)]
-        public byte rumbleData1;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 4)]
-        public byte rumbleData2;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 5)]
-        public byte rumbleData3;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 6)]
-        public byte rumbleData4;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 7)]
-        public byte rumbleData5;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 8)]
-        public byte rumbleData6;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 9)]
-        public byte rumbleData7;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 10)]
-        public byte subCommandConfigureReportMode;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 11)]
-        public byte mode;
-
-        public static SwitchConfigureReportModeOutput Create(byte packetNumber, byte mode)
+        public static SwitchGenericSubCommandOutput Create(byte packetNumber, SubCommandBase.SubCommand subCommand,
+            byte data)
         {
-            return new SwitchConfigureReportModeOutput
+            return new SwitchGenericSubCommandOutput
             {
                 baseCommand = new InputDeviceCommand(Type, Size),
-                reportId = 0x01,
-                packetNumber = packetNumber,
-                rumbleData0 = 0x00,
-                rumbleData1 = 0x01,
-                rumbleData2 = 0x40,
-                rumbleData3 = 0x40,
-                rumbleData4 = 0x00,
-                rumbleData5 = 0x01,
-                rumbleData6 = 0x40,
-                rumbleData7 = 0x40,
-                subCommandConfigureReportMode = 0x03,
-                mode = mode
+                subCommandBase = SubCommandBase.Create(packetNumber, subCommand),
+                data = data
             };
         }
     }
 
     [StructLayout(LayoutKind.Explicit, Size = Size)]
-    internal struct SwitchReadSPIFlashOutput : IInputDeviceCommandInfo
+    internal unsafe struct SwitchReadSPIFlashOutput : IInputDeviceCommandInfo
     {
         public static FourCC Type => new('H', 'I', 'D', 'O');
         public FourCC typeStatic => Type;
 
-        public const int Size = InputDeviceCommand.BaseCommandSize + 0x16;
+        public const int Size = InputDeviceCommand.BaseCommandSize + SubCommandBase.Size + 5;
 
         [FieldOffset(0)] public InputDeviceCommand baseCommand;
 
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 0)]
-        public byte reportId;
+        [FieldOffset(InputDeviceCommand.BaseCommandSize)]
+        public SubCommandBase subCommandBase;
 
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 1)]
-        public byte packetNumber;
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + SubCommandBase.Size)]
+        public fixed byte address[4];
 
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 2)]
-        public byte rumbleData0;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 3)]
-        public byte rumbleData1;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 4)]
-        public byte rumbleData2;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 5)]
-        public byte rumbleData3;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 6)]
-        public byte rumbleData4;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 7)]
-        public byte rumbleData5;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 8)]
-        public byte rumbleData6;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 9)]
-        public byte rumbleData7;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 10)]
-        public byte subCommandReadSPIFlash;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 11)]
-        public byte address0;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 12)]
-        public byte address1;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 13)]
-        public byte address2;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 14)]
-        public byte address3;
-
-        [FieldOffset(InputDeviceCommand.BaseCommandSize + 15)]
+        [FieldOffset(InputDeviceCommand.BaseCommandSize + SubCommandBase.Size + 4)]
         public byte length;
 
         public static SwitchReadSPIFlashOutput Create(byte packetNumber, Address address, byte length)
         {
             var addr = (uint)address;
 
-            return new SwitchReadSPIFlashOutput
+            var command = new SwitchReadSPIFlashOutput
             {
                 baseCommand = new InputDeviceCommand(Type, Size),
-                reportId = 0x01,
-                packetNumber = packetNumber,
-                rumbleData0 = 0x00,
-                rumbleData1 = 0x01,
-                rumbleData2 = 0x40,
-                rumbleData3 = 0x40,
-                rumbleData4 = 0x00,
-                rumbleData5 = 0x01,
-                rumbleData6 = 0x40,
-                rumbleData7 = 0x40,
-                subCommandReadSPIFlash = 0x10,
-                address0 = (byte)(addr & 0xFF),
-                address1 = (byte)((addr >> 8) & 0xFF),
-                address2 = (byte)((addr >> 16) & 0xFF),
-                address3 = (byte)((addr >> 24) & 0xFF),
+                subCommandBase = SubCommandBase.Create(packetNumber, SubCommandBase.SubCommand.ReadSPIFlash),
+                // address to be set below
                 length = length
             };
+
+            command.address[0] = (byte)(addr & 0xFF);
+            command.address[1] = (byte)((addr >> 8) & 0xFF);
+            command.address[2] = (byte)((addr >> 16) & 0xFF);
+            command.address[3] = (byte)((addr >> 24) & 0xFF);
+
+            return command;
         }
 
         public enum Address : uint
@@ -163,9 +79,49 @@ namespace UnityJoycon
             RightStickFactoryCalibration = 0x6046,
             LeftStickParameters = 0x6086,
             RightStickParameters = 0x6098,
-            ImuFactoryCalibration = 0x6020,
-            ImuUserCalibration = 0x8028,
-            ImuParameters = 0x6080
+            IMUFactoryCalibration = 0x6020,
+            IMUUserCalibration = 0x8028,
+            IMUParameters = 0x6080
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = Size)]
+    internal unsafe struct SubCommandBase
+    {
+        public const int Size = 11;
+
+        [FieldOffset(0)] public byte reportId;
+        [FieldOffset(1)] public byte packetNumber;
+        [FieldOffset(2)] public fixed byte rumbleData[8];
+        [FieldOffset(10)] public byte subCommand;
+
+        public static SubCommandBase Create(byte packetNumber, SubCommand subCommand)
+        {
+            var subCommandBase = new SubCommandBase
+            {
+                reportId = 0x01,
+                packetNumber = packetNumber,
+                // rumbleData to be set below
+                subCommand = (byte)subCommand
+            };
+
+            subCommandBase.rumbleData[0] = 0x00;
+            subCommandBase.rumbleData[1] = 0x01;
+            subCommandBase.rumbleData[2] = 0x40;
+            subCommandBase.rumbleData[3] = 0x40;
+            subCommandBase.rumbleData[4] = 0x00;
+            subCommandBase.rumbleData[5] = 0x01;
+            subCommandBase.rumbleData[6] = 0x40;
+            subCommandBase.rumbleData[7] = 0x40;
+
+            return subCommandBase;
+        }
+
+        public enum SubCommand : byte
+        {
+            ConfigureReportMode = 0x03,
+            ReadSPIFlash = 0x10,
+            ConfigureIMU = 0x40
         }
     }
 }

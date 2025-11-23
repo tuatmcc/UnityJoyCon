@@ -25,8 +25,11 @@ namespace UnityJoycon
         private const byte IMUCalibrationLength = 24;
 
         private Side _side;
+
         private StickCalibrationState _stickCalibration;
         private IMUCalibrationState _imuCalibration;
+        private bool _imuEnabled;
+
         private double _lastCommandSentTime;
         private byte _commandPacketNumber;
 
@@ -72,6 +75,8 @@ namespace UnityJoycon
 
             if (TryRequestIMUParameters()) return;
             if (TryRequestIMUCalibration()) return;
+
+            if (TryEnableIMU()) return;
         }
 
         bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
@@ -92,7 +97,9 @@ namespace UnityJoycon
                 _ => throw new InvalidOperationException("Invalid product ID for Switch Joy-Con.")
             };
 
-            var configureOutputModeCommand = SwitchConfigureReportModeOutput.Create(GetNextCommandPacketNumber(), 0x30);
+            var configureOutputModeCommand =
+                SwitchGenericSubCommandOutput.Create(GetNextCommandPacketNumber(),
+                    SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
             ExecuteCommand(ref configureOutputModeCommand);
         }
 
@@ -133,6 +140,7 @@ namespace UnityJoycon
         private unsafe void HandleStandardInput(SwitchStandardInputReport* report, InputEventPtr eventPtr)
         {
             if (!_stickCalibration.IsReady) return;
+            _imuEnabled = report->IsEnabledIMU();
 
             var data = report->ToHIDInputReport(
                 _side,
@@ -153,7 +161,7 @@ namespace UnityJoycon
                 return;
             }
 
-            if (report->subCommandReply.subCommandId != (byte)JoyConSubCommand.SpiFlashRead) return;
+            if (report->subCommandReply.subCommandId != (byte)SubCommandBase.SubCommand.ReadSPIFlash) return;
 
             var address = ReadAddress(report->subCommandReply.data);
             var length = report->subCommandReply.data[4];
@@ -182,10 +190,10 @@ namespace UnityJoycon
             if (address == (uint)GetStickFactoryCalibrationAddress() && length == StickCalibrationLength)
                 _stickCalibration.ApplyCalibration(payload, _side);
 
-            if (address == (uint)SwitchReadSPIFlashOutput.Address.ImuParameters && length == IMUParameterLength)
+            if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUParameters && length == IMUParameterLength)
                 _imuCalibration.ApplyParameters(payload);
 
-            if (address == (uint)SwitchReadSPIFlashOutput.Address.ImuUserCalibration && length == IMUCalibrationLength)
+            if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUUserCalibration && length == IMUCalibrationLength)
             {
                 _imuCalibration.MarkUserCalibrationLoaded();
                 if (IsAllPayloadUnset(payload, IMUCalibrationLength)) return;
@@ -194,7 +202,7 @@ namespace UnityJoycon
                 return;
             }
 
-            if (address == (uint)SwitchReadSPIFlashOutput.Address.ImuFactoryCalibration &&
+            if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUFactoryCalibration &&
                 length == StickParameterLength)
                 _imuCalibration.ApplyCalibration(payload);
         }
@@ -261,7 +269,7 @@ namespace UnityJoycon
 
             var imuParametersCommand =
                 SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
-                    SwitchReadSPIFlashOutput.Address.ImuParameters,
+                    SwitchReadSPIFlashOutput.Address.IMUParameters,
                     IMUParameterLength);
             ExecuteCommand(ref imuParametersCommand);
             _lastCommandSentTime = lastUpdateTime;
@@ -276,7 +284,7 @@ namespace UnityJoycon
             {
                 var imuUserCalibrationCommand =
                     SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
-                        SwitchReadSPIFlashOutput.Address.ImuUserCalibration,
+                        SwitchReadSPIFlashOutput.Address.IMUUserCalibration,
                         IMUCalibrationLength);
                 ExecuteCommand(ref imuUserCalibrationCommand);
             }
@@ -284,10 +292,21 @@ namespace UnityJoycon
             {
                 var imuCalibrationCommand =
                     SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
-                        SwitchReadSPIFlashOutput.Address.ImuFactoryCalibration, 24);
+                        SwitchReadSPIFlashOutput.Address.IMUFactoryCalibration, 24);
                 ExecuteCommand(ref imuCalibrationCommand);
             }
 
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
+
+        private bool TryEnableIMU()
+        {
+            if (_imuEnabled) return false;
+
+            var enableImuCommand = SwitchGenericSubCommandOutput.Create(GetNextCommandPacketNumber(),
+                SubCommandBase.SubCommand.ConfigureIMU, 0x01);
+            ExecuteCommand(ref enableImuCommand);
             _lastCommandSentTime = lastUpdateTime;
             return true;
         }
