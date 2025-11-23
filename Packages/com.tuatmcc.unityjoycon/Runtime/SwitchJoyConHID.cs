@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -24,7 +25,44 @@ namespace UnityJoycon
         private const byte IMUParameterLength = 6;
         private const byte IMUCalibrationLength = 24;
 
-        private Side _side;
+        // ReSharper disable InconsistentNaming
+        public ButtonControl rightSmallLeftShoulder { get; private set; }
+        public ButtonControl rightSmallRightShoulder { get; private set; }
+        public ButtonControl leftSmallLeftShoulder { get; private set; }
+        public ButtonControl leftSmallRightShoulder { get; private set; }
+        public ButtonControl captureButton { get; private set; }
+        public ButtonControl homeButton { get; private set; }
+        public Vector3Control accelerometer { get; private set; }
+        public Vector3Control gyroscope { get; private set; }
+
+        public new static SwitchJoyConHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConHID> all => AllDevices;
+        // ReSharper restore InconsistentNaming
+
+        private static readonly List<SwitchJoyConHID> AllDevices = new();
+
+        public Side Side => HIDDeviceDescriptor.productId switch
+        {
+            ProductIdLeft => Side.Left,
+            ProductIdRight => Side.Right,
+            _ => throw new InvalidOperationException("Invalid product ID for Switch Joy-Con.")
+        };
+
+        public HID.HIDDeviceDescriptor HIDDeviceDescriptor
+        {
+            get
+            {
+                if (_haveParsedHIDDescriptor) return _hidDeviceDescriptor;
+
+                _hidDeviceDescriptor = HID.HIDDeviceDescriptor.FromJson(description.capabilities);
+                _haveParsedHIDDescriptor = true;
+                return _hidDeviceDescriptor;
+            }
+        }
+
+        private bool _haveParsedHIDDescriptor;
+        private HID.HIDDeviceDescriptor _hidDeviceDescriptor;
 
         private StickCalibrationState _stickCalibration;
         private IMUCalibrationState _imuCalibration;
@@ -33,15 +71,6 @@ namespace UnityJoycon
         private double _lastCommandSentTime;
         private double _lastStandardInputReceivedTime;
         private byte _commandPacketNumber;
-
-        // ReSharper disable InconsistentNaming
-        public ButtonControl rightSmallRightShoulder { get; private set; }
-        public ButtonControl rightSmallLeftShoulder { get; private set; }
-        public ButtonControl captureButton { get; private set; }
-        public ButtonControl homeButton { get; private set; }
-        public Vector3Control accelerometer { get; private set; }
-        public Vector3Control gyroscope { get; private set; }
-        // ReSharper restore InconsistentNaming
 
         private enum ReportId : byte
         {
@@ -92,22 +121,25 @@ namespace UnityJoycon
         protected override void OnAdded()
         {
             base.OnAdded();
+            AllDevices.Add(this);
+        }
 
-            var descriptor = HID.HIDDeviceDescriptor.FromJson(description.capabilities);
-            _side = descriptor.productId switch
-            {
-                ProductIdLeft => Side.Left,
-                ProductIdRight => Side.Right,
-                _ => throw new InvalidOperationException("Invalid product ID for Switch Joy-Con.")
-            };
+        protected override void OnRemoved()
+        {
+            base.OnRemoved();
+            AllDevices.Remove(this);
+            if (current == this)
+                current = null;
         }
 
         protected override void FinishSetup()
         {
             base.FinishSetup();
 
-            rightSmallRightShoulder = GetChildControl<ButtonControl>("rightSmallRightShoulder");
             rightSmallLeftShoulder = GetChildControl<ButtonControl>("rightSmallLeftShoulder");
+            rightSmallRightShoulder = GetChildControl<ButtonControl>("rightSmallRightShoulder");
+            leftSmallLeftShoulder = GetChildControl<ButtonControl>("leftSmallLeftShoulder");
+            leftSmallRightShoulder = GetChildControl<ButtonControl>("leftSmallRightShoulder");
             captureButton = GetChildControl<ButtonControl>("capture");
             homeButton = GetChildControl<ButtonControl>("home");
             accelerometer = GetChildControl<Vector3Control>("accelerometer");
@@ -149,7 +181,7 @@ namespace UnityJoycon
             if (!_imuCalibration.IsReady) return;
 
             var data = report->ToHIDInputReport(
-                _side,
+                Side,
                 _stickCalibration.ToNormalizationParameters(),
                 _imuCalibration.ToNormalizationParameters());
 
@@ -186,12 +218,12 @@ namespace UnityJoycon
                 _stickCalibration.MarkUserCalibrationLoaded();
                 if (IsAllPayloadUnset(payload, StickCalibrationLength)) return;
 
-                _stickCalibration.ApplyCalibration(payload, _side);
+                _stickCalibration.ApplyCalibration(payload, Side);
                 return;
             }
 
             if (address == (uint)GetStickFactoryCalibrationAddress() && length == StickCalibrationLength)
-                _stickCalibration.ApplyCalibration(payload, _side);
+                _stickCalibration.ApplyCalibration(payload, Side);
 
             if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUParameters && length == IMUParameterLength)
                 _imuCalibration.ApplyParameters(payload);
@@ -330,7 +362,7 @@ namespace UnityJoycon
 
         private SwitchReadSPIFlashOutput.Address GetStickUserCalibrationAddress()
         {
-            return _side switch
+            return Side switch
             {
                 Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickUserCalibration,
                 Side.Right => SwitchReadSPIFlashOutput.Address.RightStickUserCalibration,
@@ -340,7 +372,7 @@ namespace UnityJoycon
 
         private SwitchReadSPIFlashOutput.Address GetStickFactoryCalibrationAddress()
         {
-            return _side switch
+            return Side switch
             {
                 Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickFactoryCalibration,
                 Side.Right => SwitchReadSPIFlashOutput.Address.RightStickFactoryCalibration,
@@ -350,7 +382,7 @@ namespace UnityJoycon
 
         private SwitchReadSPIFlashOutput.Address GetStickParametersAddress()
         {
-            return _side switch
+            return Side switch
             {
                 Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickParameters,
                 Side.Right => SwitchReadSPIFlashOutput.Address.RightStickParameters,

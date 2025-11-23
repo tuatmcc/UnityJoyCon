@@ -1,3 +1,4 @@
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -37,7 +38,7 @@ public class JoyConRight : MonoBehaviour
 
     private void Awake()
     {
-        _joyCon = InputSystem.GetDevice<SwitchJoyConHID>();
+        _joyCon = SwitchJoyConHID.all.First(joyCon => joyCon.Side == Side.Right);
     }
 
     private void Update()

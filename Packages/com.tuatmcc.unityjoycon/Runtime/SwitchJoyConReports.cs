@@ -37,10 +37,10 @@ namespace UnityJoycon
         [InputControl(name = "dpad/up", bit = (int)Button.DpadUp)]
         [InputControl(name = "dpad/right", bit = (int)Button.DpadRight)]
         [InputControl(name = "dpad/left", bit = (int)Button.DpadLeft)]
-        [InputControl(name = "leftSmallLeftShoulder", displayName = "Left SL", layout = "Button",
-            bit = (int)Button.LeftSL)]
         [InputControl(name = "leftSmallRightShoulder", displayName = "Left SR", layout = "Button",
             bit = (int)Button.LeftSR)]
+        [InputControl(name = "leftSmallLeftShoulder", displayName = "Left SL", layout = "Button",
+            bit = (int)Button.LeftSL)]
         [InputControl(name = "leftShoulder", displayName = "L", layout = "Button", bit = (int)Button.L)]
         [InputControl(name = "leftTrigger", displayName = "ZL", layout = "Button", format = "BIT",
             bit = (int)Button.ZL)]
@@ -81,8 +81,8 @@ namespace UnityJoycon
             DpadUp = 17,
             DpadRight = 18,
             DpadLeft = 19,
-            LeftSL = 20,
-            LeftSR = 21,
+            LeftSR = 20,
+            LeftSL = 21,
             L = 22,
             ZL = 23
         }
