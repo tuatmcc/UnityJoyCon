@@ -21,9 +21,12 @@ namespace UnityJoycon
         private const double CommandIntervalSeconds = 0.1;
         private const byte StickParameterLength = 18;
         private const byte StickCalibrationLength = 9;
+        private const byte IMUParameterLength = 6;
+        private const byte IMUCalibrationLength = 24;
 
         private Side _side;
         private StickCalibrationState _stickCalibration;
+        private IMUCalibrationState _imuCalibration;
         private double _lastCommandSentTime;
 
         // ReSharper disable once InconsistentNaming
@@ -66,7 +69,8 @@ namespace UnityJoycon
             if (TryRequestStickParameters()) return;
             if (TryRequestStickCalibration()) return;
 
-            // TODO: IMUキャリブレーションデータの読み出し
+            if (TryRequestIMUParameters()) return;
+            if (TryRequestIMUCalibration()) return;
         }
 
         bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
@@ -176,6 +180,22 @@ namespace UnityJoycon
 
             if (address == (uint)GetStickFactoryCalibrationAddress() && length == StickCalibrationLength)
                 _stickCalibration.ApplyCalibration(payload, _side);
+
+            if (address == (uint)SwitchReadSPIFlashOutput.Address.ImuParameters && length == IMUParameterLength)
+                _imuCalibration.ApplyParameters(payload);
+
+            if (address == (uint)SwitchReadSPIFlashOutput.Address.ImuUserCalibration && length == IMUCalibrationLength)
+            {
+                _imuCalibration.MarkUserCalibrationLoaded();
+                if (IsAllPayloadUnset(payload, IMUCalibrationLength)) return;
+
+                _imuCalibration.ApplyCalibration(payload);
+                return;
+            }
+
+            if (address == (uint)SwitchReadSPIFlashOutput.Address.ImuFactoryCalibration &&
+                length == StickParameterLength)
+                _imuCalibration.ApplyCalibration(payload);
         }
 
         private static unsafe uint ReadAddress(byte* data)
@@ -196,7 +216,6 @@ namespace UnityJoycon
         {
             if (_stickCalibration.ParametersLoaded) return false;
 
-            Debug.Log("Requesting stick parameters...");
             var stickParametersCommand =
                 SwitchReadSPIFlashOutput.Create(0x01, GetStickParametersAddress(), StickParameterLength);
             ExecuteCommand(ref stickParametersCommand);
@@ -210,17 +229,49 @@ namespace UnityJoycon
 
             if (!_stickCalibration.UserCalibrationLoaded)
             {
-                Debug.Log("Requesting stick user calibration data...");
                 var stickUserCalibrationCommand =
                     SwitchReadSPIFlashOutput.Create(0x00, GetStickUserCalibrationAddress(), StickCalibrationLength);
                 ExecuteCommand(ref stickUserCalibrationCommand);
             }
             else
             {
-                Debug.Log("Requesting stick factory calibration data...");
                 var stickCalibrationCommand =
                     SwitchReadSPIFlashOutput.Create(0x00, GetStickFactoryCalibrationAddress(), StickCalibrationLength);
                 ExecuteCommand(ref stickCalibrationCommand);
+            }
+
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
+
+        private bool TryRequestIMUParameters()
+        {
+            if (_imuCalibration.ParametersLoaded) return false;
+
+            var imuParametersCommand =
+                SwitchReadSPIFlashOutput.Create(0x00, SwitchReadSPIFlashOutput.Address.ImuParameters,
+                    IMUParameterLength);
+            ExecuteCommand(ref imuParametersCommand);
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
+
+        private bool TryRequestIMUCalibration()
+        {
+            if (_imuCalibration.CalibrationLoaded) return false;
+
+            if (!_imuCalibration.UserCalibrationLoaded)
+            {
+                var imuUserCalibrationCommand =
+                    SwitchReadSPIFlashOutput.Create(0x00, SwitchReadSPIFlashOutput.Address.ImuUserCalibration,
+                        IMUCalibrationLength);
+                ExecuteCommand(ref imuUserCalibrationCommand);
+            }
+            else
+            {
+                var imuCalibrationCommand =
+                    SwitchReadSPIFlashOutput.Create(0x00, SwitchReadSPIFlashOutput.Address.ImuFactoryCalibration, 24);
+                ExecuteCommand(ref imuCalibrationCommand);
             }
 
             _lastCommandSentTime = lastUpdateTime;
@@ -319,6 +370,75 @@ namespace UnityJoycon
             public void MarkUserCalibrationLoaded()
             {
                 UserCalibrationLoaded = true;
+            }
+        }
+
+        private struct IMUCalibrationState
+        {
+            public bool ParametersLoaded { get; private set; }
+            public bool CalibrationLoaded { get; private set; }
+            public bool UserCalibrationLoaded { get; private set; }
+
+            public short AccelOffsetX { get; private set; }
+            public short AccelOffsetY { get; private set; }
+            public short AccelOffsetZ { get; private set; }
+
+            public short AccelOriginX { get; private set; }
+            public short AccelOriginY { get; private set; }
+            public short AccelOriginZ { get; private set; }
+
+            public short AccelCoefficientX { get; private set; }
+            public short AccelCoefficientY { get; private set; }
+            public short AccelCoefficientZ { get; private set; }
+
+            public short GyroOffsetX { get; private set; }
+            public short GyroOffsetY { get; private set; }
+            public short GyroOffsetZ { get; private set; }
+
+            public short GyroCoefficientX { get; private set; }
+            public short GyroCoefficientY { get; private set; }
+            public short GyroCoefficientZ { get; private set; }
+
+            public bool IsReady => ParametersLoaded && CalibrationLoaded;
+
+            public unsafe void ApplyParameters(byte* payload)
+            {
+                AccelOffsetX = ReadInt16(payload, 0);
+                AccelOffsetY = ReadInt16(payload, 2);
+                AccelOffsetZ = ReadInt16(payload, 4);
+
+                ParametersLoaded = true;
+            }
+
+            public unsafe void ApplyCalibration(byte* payload)
+            {
+                AccelOriginX = ReadInt16(payload, 0);
+                AccelOriginY = ReadInt16(payload, 2);
+                AccelOriginZ = ReadInt16(payload, 4);
+
+                AccelCoefficientX = ReadInt16(payload, 6);
+                AccelCoefficientY = ReadInt16(payload, 8);
+                AccelCoefficientZ = ReadInt16(payload, 10);
+
+                GyroOffsetX = ReadInt16(payload, 12);
+                GyroOffsetY = ReadInt16(payload, 14);
+                GyroOffsetZ = ReadInt16(payload, 16);
+
+                GyroCoefficientX = ReadInt16(payload, 18);
+                GyroCoefficientY = ReadInt16(payload, 20);
+                GyroCoefficientZ = ReadInt16(payload, 22);
+
+                CalibrationLoaded = true;
+            }
+
+            public void MarkUserCalibrationLoaded()
+            {
+                UserCalibrationLoaded = true;
+            }
+
+            private static unsafe short ReadInt16(byte* data, int index)
+            {
+                return (short)(data[index] | (data[index + 1] << 8));
             }
         }
     }
