@@ -11,14 +11,13 @@ using UnityEngine.InputSystem.LowLevel;
 namespace UnityJoycon
 {
 #if UNITY_EDITOR
-    [InitializeOnLoad]
 #endif
     [InputControlLayout(displayName = "Switch Joy-Con", stateType = typeof(SwitchJoyConHIDInputState))]
     public class SwitchJoyConHID : Gamepad, IInputStateCallbackReceiver
     {
-        private const int VendorId = 0x057e;
-        private const int ProductIdLeft = 0x2006;
-        private const int ProductIdRight = 0x2007;
+        protected const int VendorId = 0x057e;
+        protected const int ProductIdLeft = 0x2006;
+        protected const int ProductIdRight = 0x2007;
         private const double CommandIntervalSeconds = 0.1;
         private const byte StickParameterLength = 18;
         private const byte StickCalibrationLength = 9;
@@ -42,7 +41,7 @@ namespace UnityJoycon
 
         private static readonly List<SwitchJoyConHID> AllDevices = new();
 
-        public Side Side => HIDDeviceDescriptor.productId switch
+        public virtual Side Side => HIDDeviceDescriptor.productId switch
         {
             ProductIdLeft => Side.Left,
             ProductIdRight => Side.Right,
@@ -78,20 +77,6 @@ namespace UnityJoycon
             SubCommandReply = 0x21
         }
 
-        static SwitchJoyConHID()
-        {
-            InputSystem.RegisterLayout<SwitchJoyConHID>(matches: new InputDeviceMatcher().WithInterface("HID")
-                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdLeft));
-            InputSystem.RegisterLayout<SwitchJoyConHID>(matches: new InputDeviceMatcher().WithInterface("HID")
-                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdRight));
-        }
-
-        // ランタイムでスタティックコンストラクタを実行するためのダミーメソッド
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void Initialize()
-        {
-        }
-
         void IInputStateCallbackReceiver.OnStateEvent(InputEventPtr eventPtr)
         {
             HandleStateEvent(eventPtr);
@@ -122,14 +107,25 @@ namespace UnityJoycon
         {
             base.OnAdded();
             AllDevices.Add(this);
+            current ??= this;
+            OnAddedToSideCollection();
         }
 
         protected override void OnRemoved()
         {
             base.OnRemoved();
             AllDevices.Remove(this);
+            OnRemovedFromSideCollection();
             if (current == this)
-                current = null;
+                current = AllDevices.Count > 0 ? AllDevices[0] : null;
+        }
+
+        protected virtual void OnAddedToSideCollection()
+        {
+        }
+
+        protected virtual void OnRemovedFromSideCollection()
+        {
         }
 
         protected override void FinishSetup()
@@ -550,6 +546,88 @@ namespace UnityJoycon
             {
                 return (short)(data[index] | (data[index + 1] << 8));
             }
+        }
+    }
+
+#if UNITY_EDITOR
+    [InitializeOnLoad]
+#endif
+    [InputControlLayout(displayName = "Switch Joy-Con (L)", stateType = typeof(SwitchJoyConHIDInputState))]
+    public class SwitchJoyConLeftHID : SwitchJoyConHID
+    {
+        private static readonly List<SwitchJoyConLeftHID> LeftDevices = new();
+
+        // ReSharper disable InconsistentNaming
+        public new static SwitchJoyConLeftHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConLeftHID> all => LeftDevices;
+        // ReSharper restore InconsistentNaming
+
+        public override Side Side => Side.Left;
+
+        static SwitchJoyConLeftHID()
+        {
+            InputSystem.RegisterLayout<SwitchJoyConLeftHID>(matches: new InputDeviceMatcher().WithInterface("HID")
+                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdLeft));
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void Initialize()
+        {
+        }
+
+        protected override void OnAddedToSideCollection()
+        {
+            LeftDevices.Add(this);
+            current ??= this;
+        }
+
+        protected override void OnRemovedFromSideCollection()
+        {
+            LeftDevices.Remove(this);
+            if (current == this)
+                current = LeftDevices.Count > 0 ? LeftDevices[0] : null;
+        }
+    }
+
+#if UNITY_EDITOR
+    [InitializeOnLoad]
+#endif
+    [InputControlLayout(displayName = "Switch Joy-Con (R)", stateType = typeof(SwitchJoyConHIDInputState))]
+    public class SwitchJoyConRightHID : SwitchJoyConHID
+    {
+        private static readonly List<SwitchJoyConRightHID> RightDevices = new();
+
+        // ReSharper disable InconsistentNaming
+        public new static SwitchJoyConRightHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConRightHID> all => RightDevices;
+        // ReSharper restore InconsistentNaming
+
+        public override Side Side => Side.Right;
+
+        static SwitchJoyConRightHID()
+        {
+            InputSystem.RegisterLayout<SwitchJoyConRightHID>(matches: new InputDeviceMatcher().WithInterface("HID")
+                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdRight));
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void Initialize()
+        {
+        }
+
+        protected override void OnAddedToSideCollection()
+        {
+            RightDevices.Add(this);
+            current ??= this;
+        }
+
+        protected override void OnRemovedFromSideCollection()
+        {
+            RightDevices.Remove(this);
+            if (current == this)
+                current = RightDevices.Count > 0 ? RightDevices[0] : null;
         }
     }
 }

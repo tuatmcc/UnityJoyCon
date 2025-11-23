@@ -34,34 +34,34 @@ public class JoyConLeft : MonoBehaviour
     [SerializeField] private TMP_Text gyroZText;
     [SerializeField] private Slider gyroZSlider;
 
-    private SwitchJoyConHID _joyCon;
+    private SwitchJoyConLeftHID _joyConLeft;
 
     private void Awake()
     {
-        _joyCon = SwitchJoyConHID.all.First(joyCon => joyCon.Side == Side.Left);
+        _joyConLeft = SwitchJoyConLeftHID.all.FirstOrDefault();
     }
 
     private void Update()
     {
-        if (_joyCon == null) return;
+        if (_joyConLeft == null) return;
 
-        buttonRight.material.color = _joyCon.dpad.right.IsPressed() ? Color.green : Color.black;
-        buttonDown.material.color = _joyCon.dpad.down.IsPressed() ? Color.green : Color.black;
-        buttonUp.material.color = _joyCon.dpad.up.IsPressed() ? Color.green : Color.black;
-        buttonLeft.material.color = _joyCon.dpad.left.IsPressed() ? Color.green : Color.black;
-        buttonL.material.color = _joyCon.leftShoulder.IsPressed() ? Color.green : Color.black;
-        buttonZL.material.color = _joyCon.leftTrigger.IsPressed() ? Color.green : Color.black;
-        buttonSL.material.color = _joyCon.leftSmallLeftShoulder.IsPressed() ? Color.green : Color.black;
-        buttonSR.material.color = _joyCon.leftSmallRightShoulder.IsPressed() ? Color.green : Color.black;
-        buttonMinus.material.color = _joyCon.selectButton.IsPressed() ? Color.green : Color.black;
-        buttonCapture.material.color = _joyCon.captureButton.IsPressed() ? Color.green : Color.black;
-        buttonStick.material.color = _joyCon.leftStickButton.IsPressed() ? Color.green : Color.black;
+        buttonRight.material.color = _joyConLeft.dpad.right.IsPressed() ? Color.green : Color.black;
+        buttonDown.material.color = _joyConLeft.dpad.down.IsPressed() ? Color.green : Color.black;
+        buttonUp.material.color = _joyConLeft.dpad.up.IsPressed() ? Color.green : Color.black;
+        buttonLeft.material.color = _joyConLeft.dpad.left.IsPressed() ? Color.green : Color.black;
+        buttonL.material.color = _joyConLeft.leftShoulder.IsPressed() ? Color.green : Color.black;
+        buttonZL.material.color = _joyConLeft.leftTrigger.IsPressed() ? Color.green : Color.black;
+        buttonSL.material.color = _joyConLeft.leftSmallLeftShoulder.IsPressed() ? Color.green : Color.black;
+        buttonSR.material.color = _joyConLeft.leftSmallRightShoulder.IsPressed() ? Color.green : Color.black;
+        buttonMinus.material.color = _joyConLeft.selectButton.IsPressed() ? Color.green : Color.black;
+        buttonCapture.material.color = _joyConLeft.captureButton.IsPressed() ? Color.green : Color.black;
+        buttonStick.material.color = _joyConLeft.leftStickButton.IsPressed() ? Color.green : Color.black;
 
-        var leftStick = _joyCon.leftStick.ReadValue();
+        var leftStick = _joyConLeft.leftStick.ReadValue();
         stickAxis.localPosition = new Vector3(leftStick.x * 0.5f, stickAxis.localPosition.y, leftStick.y * 0.5f);
 
-        var accel = _joyCon.accelerometer.ReadValue();
-        var gyro = _joyCon.gyroscope.ReadValue();
+        var accel = _joyConLeft.accelerometer.ReadValue();
+        var gyro = _joyConLeft.gyroscope.ReadValue();
 
         accelXText.SetText($"{accel.x: 0.00;-0.00}");
         accelYText.SetText($"{accel.y: 0.00;-0.00}");
