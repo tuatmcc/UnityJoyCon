@@ -161,8 +161,7 @@ namespace UnityJoycon
         {
             if (address == (uint)GetStickParametersAddress() && length == StickParameterLength)
             {
-                var deadZone = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
-                _stickCalibration.SetParameters(deadZone);
+                _stickCalibration.ApplyParameters(payload);
                 return;
             }
 
@@ -171,16 +170,12 @@ namespace UnityJoycon
                 _stickCalibration.MarkUserCalibrationLoaded();
                 if (IsAllPayloadUnset(payload, StickCalibrationLength)) return;
 
-                var calibration = ParseStickCalibration(payload, _side);
-                _stickCalibration.ApplyCalibration(calibration);
+                _stickCalibration.ApplyCalibration(payload, _side);
                 return;
             }
 
             if (address == (uint)GetStickFactoryCalibrationAddress() && length == StickCalibrationLength)
-            {
-                var calibration = ParseStickCalibration(payload, _side);
-                _stickCalibration.ApplyCalibration(calibration);
-            }
+                _stickCalibration.ApplyCalibration(payload, _side);
         }
 
         private static unsafe uint ReadAddress(byte* data)
@@ -195,36 +190,6 @@ namespace UnityJoycon
                     return false;
 
             return true;
-        }
-
-        private static unsafe StickCalibrationValues ParseStickCalibration(byte* payload, Side side)
-        {
-            var rawCalData = stackalloc ushort[6];
-            rawCalData[0] = (ushort)(((payload[1] << 8) & 0xf00) | payload[0]);
-            rawCalData[1] = (ushort)((payload[2] << 4) | (payload[1] >> 4));
-            rawCalData[2] = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
-            rawCalData[3] = (ushort)((payload[5] << 4) | (payload[4] >> 4));
-            rawCalData[4] = (ushort)(((payload[7] << 8) & 0xf00) | payload[6]);
-            rawCalData[5] = (ushort)((payload[8] << 4) | (payload[7] >> 4));
-
-            return side switch
-            {
-                Side.Left => new StickCalibrationValues(
-                    rawCalData[2],
-                    rawCalData[3],
-                    rawCalData[4],
-                    rawCalData[5],
-                    rawCalData[0],
-                    rawCalData[1]),
-                Side.Right => new StickCalibrationValues(
-                    rawCalData[0],
-                    rawCalData[1],
-                    rawCalData[2],
-                    rawCalData[3],
-                    rawCalData[4],
-                    rawCalData[5]),
-                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
-            };
         }
 
         private bool TryRequestStickParameters()
@@ -292,27 +257,6 @@ namespace UnityJoycon
             };
         }
 
-        private readonly struct StickCalibrationValues
-        {
-            public StickCalibrationValues(ushort centerX, ushort centerY, ushort minX, ushort minY, ushort maxX,
-                ushort maxY)
-            {
-                CenterX = centerX;
-                CenterY = centerY;
-                MinX = minX;
-                MinY = minY;
-                MaxX = maxX;
-                MaxY = maxY;
-            }
-
-            public ushort CenterX { get; }
-            public ushort CenterY { get; }
-            public ushort MinX { get; }
-            public ushort MinY { get; }
-            public ushort MaxX { get; }
-            public ushort MaxY { get; }
-        }
-
         private struct StickCalibrationState
         {
             public bool ParametersLoaded { get; private set; }
@@ -329,20 +273,46 @@ namespace UnityJoycon
 
             public bool IsReady => ParametersLoaded && CalibrationLoaded;
 
-            public void SetParameters(ushort deadZone)
+            public unsafe void ApplyParameters(byte* payload)
             {
+                var deadZone = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
+
                 DeadZone = deadZone;
                 ParametersLoaded = true;
             }
 
-            public void ApplyCalibration(StickCalibrationValues values)
+            public unsafe void ApplyCalibration(byte* payload, Side side)
             {
-                CenterX = values.CenterX;
-                CenterY = values.CenterY;
-                MinX = values.MinX;
-                MinY = values.MinY;
-                MaxX = values.MaxX;
-                MaxY = values.MaxY;
+                var rawCalData = stackalloc ushort[6];
+                rawCalData[0] = (ushort)(((payload[1] << 8) & 0xf00) | payload[0]);
+                rawCalData[1] = (ushort)((payload[2] << 4) | (payload[1] >> 4));
+                rawCalData[2] = (ushort)(((payload[4] << 8) & 0xf00) | payload[3]);
+                rawCalData[3] = (ushort)((payload[5] << 4) | (payload[4] >> 4));
+                rawCalData[4] = (ushort)(((payload[7] << 8) & 0xf00) | payload[6]);
+                rawCalData[5] = (ushort)((payload[8] << 4) | (payload[7] >> 4));
+
+                switch (side)
+                {
+                    case Side.Left:
+                        CenterX = rawCalData[2];
+                        CenterY = rawCalData[3];
+                        MinX = rawCalData[4];
+                        MinY = rawCalData[5];
+                        MaxX = rawCalData[0];
+                        MaxY = rawCalData[1];
+                        break;
+                    case Side.Right:
+                        CenterX = rawCalData[0];
+                        CenterY = rawCalData[1];
+                        MinX = rawCalData[2];
+                        MinY = rawCalData[3];
+                        MaxX = rawCalData[4];
+                        MaxY = rawCalData[5];
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(side), side, null);
+                }
+
                 CalibrationLoaded = true;
             }
 
