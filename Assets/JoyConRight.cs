@@ -51,8 +51,8 @@ public class JoyConRight : MonoBehaviour
         buttonWest.material.color = _joyConRight.buttonWest.IsPressed() ? Color.green : Color.black;
         buttonR.material.color = _joyConRight.rightShoulder.IsPressed() ? Color.green : Color.black;
         buttonZR.material.color = _joyConRight.rightTrigger.IsPressed() ? Color.green : Color.black;
-        buttonSL.material.color = _joyConRight.rightSmallLeftShoulder.IsPressed() ? Color.green : Color.black;
-        buttonSR.material.color = _joyConRight.rightSmallRightShoulder.IsPressed() ? Color.green : Color.black;
+        buttonSL.material.color = _joyConRight.smallLeftShoulder.IsPressed() ? Color.green : Color.black;
+        buttonSR.material.color = _joyConRight.smallRightShoulder.IsPressed() ? Color.green : Color.black;
         buttonPlus.material.color = _joyConRight.startButton.IsPressed() ? Color.green : Color.black;
         buttonHome.material.color = _joyConRight.homeButton.IsPressed() ? Color.green : Color.black;
         buttonStick.material.color = _joyConRight.rightStickButton.IsPressed() ? Color.green : Color.black;

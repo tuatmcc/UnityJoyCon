@@ -51,8 +51,8 @@ public class JoyConLeft : MonoBehaviour
         buttonLeft.material.color = _joyConLeft.dpad.left.IsPressed() ? Color.green : Color.black;
         buttonL.material.color = _joyConLeft.leftShoulder.IsPressed() ? Color.green : Color.black;
         buttonZL.material.color = _joyConLeft.leftTrigger.IsPressed() ? Color.green : Color.black;
-        buttonSL.material.color = _joyConLeft.leftSmallLeftShoulder.IsPressed() ? Color.green : Color.black;
-        buttonSR.material.color = _joyConLeft.leftSmallRightShoulder.IsPressed() ? Color.green : Color.black;
+        buttonSL.material.color = _joyConLeft.smallLeftShoulder.IsPressed() ? Color.green : Color.black;
+        buttonSR.material.color = _joyConLeft.smallRightShoulder.IsPressed() ? Color.green : Color.black;
         buttonMinus.material.color = _joyConLeft.selectButton.IsPressed() ? Color.green : Color.black;
         buttonCapture.material.color = _joyConLeft.captureButton.IsPressed() ? Color.green : Color.black;
         buttonStick.material.color = _joyConLeft.leftStickButton.IsPressed() ? Color.green : Color.black;

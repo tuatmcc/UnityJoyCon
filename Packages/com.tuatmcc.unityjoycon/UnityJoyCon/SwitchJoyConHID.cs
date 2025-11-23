@@ -10,10 +10,7 @@ using UnityEngine.InputSystem.LowLevel;
 
 namespace UnityJoycon
 {
-#if UNITY_EDITOR
-#endif
-    [InputControlLayout(displayName = "Switch Joy-Con", stateType = typeof(SwitchJoyConHIDInputState))]
-    public class SwitchJoyConHID : Gamepad, IInputStateCallbackReceiver
+    public abstract class SwitchJoyConHID : InputDevice, IInputStateCallbackReceiver
     {
         protected const int VendorId = 0x057e;
         protected const int ProductIdLeft = 0x2006;
@@ -25,17 +22,10 @@ namespace UnityJoycon
         private const byte IMUCalibrationLength = 24;
 
         // ReSharper disable InconsistentNaming
-        public ButtonControl rightSmallLeftShoulder { get; private set; }
-        public ButtonControl rightSmallRightShoulder { get; private set; }
-        public ButtonControl leftSmallLeftShoulder { get; private set; }
-        public ButtonControl leftSmallRightShoulder { get; private set; }
-        public ButtonControl captureButton { get; private set; }
-        public ButtonControl homeButton { get; private set; }
         public Vector3Control accelerometer { get; private set; }
         public Vector3Control gyroscope { get; private set; }
 
-        public new static SwitchJoyConHID current { get; private set; }
-
+        public static SwitchJoyConHID current { get; private set; }
         public new static IReadOnlyList<SwitchJoyConHID> all => AllDevices;
         // ReSharper restore InconsistentNaming
 
@@ -107,37 +97,25 @@ namespace UnityJoycon
         {
             base.OnAdded();
             AllDevices.Add(this);
-            current ??= this;
-            OnAddedToSideCollection();
         }
 
         protected override void OnRemoved()
         {
             base.OnRemoved();
             AllDevices.Remove(this);
-            OnRemovedFromSideCollection();
             if (current == this)
-                current = AllDevices.Count > 0 ? AllDevices[0] : null;
+                current = null;
         }
 
-        protected virtual void OnAddedToSideCollection()
+        public override void MakeCurrent()
         {
-        }
-
-        protected virtual void OnRemovedFromSideCollection()
-        {
+            base.MakeCurrent();
+            current = this;
         }
 
         protected override void FinishSetup()
         {
             base.FinishSetup();
-
-            rightSmallLeftShoulder = GetChildControl<ButtonControl>("rightSmallLeftShoulder");
-            rightSmallRightShoulder = GetChildControl<ButtonControl>("rightSmallRightShoulder");
-            leftSmallLeftShoulder = GetChildControl<ButtonControl>("leftSmallLeftShoulder");
-            leftSmallRightShoulder = GetChildControl<ButtonControl>("leftSmallRightShoulder");
-            captureButton = GetChildControl<ButtonControl>("capture");
-            homeButton = GetChildControl<ButtonControl>("home");
             accelerometer = GetChildControl<Vector3Control>("accelerometer");
             gyroscope = GetChildControl<Vector3Control>("gyroscope");
         }
@@ -176,12 +154,23 @@ namespace UnityJoycon
             if (!_stickCalibration.IsReady) return;
             if (!_imuCalibration.IsReady) return;
 
-            var data = report->ToHIDInputReport(
-                Side,
-                _stickCalibration.ToNormalizationParameters(),
-                _imuCalibration.ToNormalizationParameters());
-
-            InputState.Change(this, data, eventPtr: eventPtr);
+            switch (Side)
+            {
+                case Side.Left:
+                    var leftState = report->ToLeftHIDInputReport(
+                        _stickCalibration.ToNormalizationParameters(),
+                        _imuCalibration.ToNormalizationParameters());
+                    InputState.Change(this, leftState, eventPtr: eventPtr);
+                    break;
+                case Side.Right:
+                    var rightState = report->ToRightHIDInputReport(
+                        _stickCalibration.ToNormalizationParameters(),
+                        _imuCalibration.ToNormalizationParameters());
+                    InputState.Change(this, rightState, eventPtr: eventPtr);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
 
         private unsafe void HandleSubCommandReply(SwitchStandardInputReport* report)
@@ -552,16 +541,25 @@ namespace UnityJoycon
 #if UNITY_EDITOR
     [InitializeOnLoad]
 #endif
-    [InputControlLayout(displayName = "Switch Joy-Con (L)", stateType = typeof(SwitchJoyConHIDInputState))]
+    [InputControlLayout(displayName = "Switch Joy-Con (L)", stateType = typeof(SwitchJoyConLeftHIDInputState))]
     public class SwitchJoyConLeftHID : SwitchJoyConHID
     {
-        private static readonly List<SwitchJoyConLeftHID> LeftDevices = new();
-
         // ReSharper disable InconsistentNaming
-        public new static SwitchJoyConLeftHID current { get; private set; }
+        public DpadControl dpad { get; private set; }
+        public ButtonControl smallLeftShoulder { get; private set; }
+        public ButtonControl smallRightShoulder { get; private set; }
+        public ButtonControl leftShoulder { get; private set; }
+        public ButtonControl leftTrigger { get; private set; }
+        public ButtonControl selectButton { get; private set; }
+        public ButtonControl captureButton { get; private set; }
+        public ButtonControl leftStickButton { get; private set; }
+        public StickControl leftStick { get; private set; }
 
-        public new static IReadOnlyList<SwitchJoyConLeftHID> all => LeftDevices;
+        public new static SwitchJoyConLeftHID current { get; private set; }
+        public new static IReadOnlyList<SwitchJoyConLeftHID> all => AllDevices;
         // ReSharper restore InconsistentNaming
+
+        private static readonly List<SwitchJoyConLeftHID> AllDevices = new();
 
         public override Side Side => Side.Left;
 
@@ -576,35 +574,69 @@ namespace UnityJoycon
         {
         }
 
-        protected override void OnAddedToSideCollection()
+        protected override void OnAdded()
         {
-            LeftDevices.Add(this);
-            current ??= this;
+            base.OnAdded();
+            AllDevices.Add(this);
         }
 
-        protected override void OnRemovedFromSideCollection()
+        protected override void OnRemoved()
         {
-            LeftDevices.Remove(this);
+            base.OnRemoved();
+            AllDevices.Remove(this);
             if (current == this)
-                current = LeftDevices.Count > 0 ? LeftDevices[0] : null;
+                current = null;
+        }
+
+        public override void MakeCurrent()
+        {
+            base.MakeCurrent();
+            current = this;
+        }
+
+        protected override void FinishSetup()
+        {
+            base.FinishSetup();
+            dpad = GetChildControl<DpadControl>("dpad");
+            smallLeftShoulder = GetChildControl<ButtonControl>("smallLeftShoulder");
+            smallRightShoulder = GetChildControl<ButtonControl>("smallRightShoulder");
+            leftShoulder = GetChildControl<ButtonControl>("leftShoulder");
+            leftTrigger = GetChildControl<ButtonControl>("leftTrigger");
+            selectButton = GetChildControl<ButtonControl>("select");
+            captureButton = GetChildControl<ButtonControl>("capture");
+            leftStickButton = GetChildControl<ButtonControl>("leftStickPress");
+            leftStick = GetChildControl<StickControl>("leftStick");
         }
     }
 
 #if UNITY_EDITOR
     [InitializeOnLoad]
 #endif
-    [InputControlLayout(displayName = "Switch Joy-Con (R)", stateType = typeof(SwitchJoyConHIDInputState))]
+    [InputControlLayout(displayName = "Switch Joy-Con (R)", stateType = typeof(SwitchJoyConRightHIDInputState))]
     public class SwitchJoyConRightHID : SwitchJoyConHID
     {
-        private static readonly List<SwitchJoyConRightHID> RightDevices = new();
-
         // ReSharper disable InconsistentNaming
-        public new static SwitchJoyConRightHID current { get; private set; }
+        public ButtonControl buttonWest { get; private set; }
+        public ButtonControl buttonNorth { get; private set; }
+        public ButtonControl buttonSouth { get; private set; }
+        public ButtonControl buttonEast { get; private set; }
+        public ButtonControl smallLeftShoulder { get; private set; }
+        public ButtonControl smallRightShoulder { get; private set; }
+        public ButtonControl rightShoulder { get; private set; }
+        public ButtonControl rightTrigger { get; private set; }
+        public ButtonControl startButton { get; private set; }
+        public ButtonControl homeButton { get; private set; }
+        public ButtonControl rightStickButton { get; private set; }
+        public StickControl rightStick { get; private set; }
 
-        public new static IReadOnlyList<SwitchJoyConRightHID> all => RightDevices;
+        public new static SwitchJoyConRightHID current { get; private set; }
+        public new static IReadOnlyList<SwitchJoyConRightHID> all => AllDevices;
         // ReSharper restore InconsistentNaming
 
+        private static readonly List<SwitchJoyConRightHID> AllDevices = new();
+
         public override Side Side => Side.Right;
+
 
         static SwitchJoyConRightHID()
         {
@@ -617,17 +649,41 @@ namespace UnityJoycon
         {
         }
 
-        protected override void OnAddedToSideCollection()
+        protected override void FinishSetup()
         {
-            RightDevices.Add(this);
-            current ??= this;
+            base.FinishSetup();
+            buttonWest = GetChildControl<ButtonControl>("buttonWest");
+            buttonNorth = GetChildControl<ButtonControl>("buttonNorth");
+            buttonSouth = GetChildControl<ButtonControl>("buttonSouth");
+            buttonEast = GetChildControl<ButtonControl>("buttonEast");
+            smallLeftShoulder = GetChildControl<ButtonControl>("smallLeftShoulder");
+            smallRightShoulder = GetChildControl<ButtonControl>("smallRightShoulder");
+            rightShoulder = GetChildControl<ButtonControl>("rightShoulder");
+            rightTrigger = GetChildControl<ButtonControl>("rightTrigger");
+            startButton = GetChildControl<ButtonControl>("start");
+            homeButton = GetChildControl<ButtonControl>("home");
+            rightStickButton = GetChildControl<ButtonControl>("rightStickPress");
+            rightStick = GetChildControl<StickControl>("rightStick");
         }
 
-        protected override void OnRemovedFromSideCollection()
+        protected override void OnAdded()
         {
-            RightDevices.Remove(this);
+            base.OnAdded();
+            AllDevices.Add(this);
+        }
+
+        protected override void OnRemoved()
+        {
+            base.OnRemoved();
+            AllDevices.Remove(this);
             if (current == this)
-                current = RightDevices.Count > 0 ? RightDevices[0] : null;
+                current = null;
+        }
+
+        public override void MakeCurrent()
+        {
+            base.MakeCurrent();
+            current = this;
         }
     }
 }
