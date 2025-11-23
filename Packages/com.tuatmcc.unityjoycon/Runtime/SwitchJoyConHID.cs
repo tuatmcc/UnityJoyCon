@@ -139,12 +139,15 @@ namespace UnityJoycon
 
         private unsafe void HandleStandardInput(SwitchStandardInputReport* report, InputEventPtr eventPtr)
         {
-            if (!_stickCalibration.IsReady) return;
             _imuEnabled = report->IsEnabledIMU();
+            if (!_imuEnabled) return;
+            if (!_stickCalibration.IsReady) return;
+            if (!_imuCalibration.IsReady) return;
 
             var data = report->ToHIDInputReport(
                 _side,
-                _stickCalibration.ToNormalizationParameters());
+                _stickCalibration.ToNormalizationParameters(),
+                _imuCalibration.ToNormalizationParameters());
 
             InputState.Change(this, data, eventPtr: eventPtr);
         }
@@ -441,6 +444,29 @@ namespace UnityJoycon
 
             public bool IsReady => ParametersLoaded && CalibrationLoaded;
 
+            public SwitchStandardInputReport.ImuNormalizationParameters ToNormalizationParameters()
+            {
+                if (!IsReady)
+                    throw new InvalidOperationException("IMU calibration is not ready.");
+
+                // 参照: State.ConvertImuSamples と同等の係数計算
+                var accScaleX = CalculateAccelScale(AccelCoefficientX, AccelOriginX);
+                var accScaleY = CalculateAccelScale(AccelCoefficientY, AccelOriginY);
+                var accScaleZ = CalculateAccelScale(AccelCoefficientZ, AccelOriginZ);
+
+                var gyroScaleX = CalculateGyroScale(GyroCoefficientX, GyroOffsetX);
+                var gyroScaleY = CalculateGyroScale(GyroCoefficientY, GyroOffsetY);
+                var gyroScaleZ = CalculateGyroScale(GyroCoefficientZ, GyroOffsetZ);
+
+                return new SwitchStandardInputReport.ImuNormalizationParameters(
+                    new SwitchStandardInputReport.ImuNormalizationParameters.AccelAxis(accScaleX),
+                    new SwitchStandardInputReport.ImuNormalizationParameters.AccelAxis(accScaleY),
+                    new SwitchStandardInputReport.ImuNormalizationParameters.AccelAxis(accScaleZ),
+                    new SwitchStandardInputReport.ImuNormalizationParameters.GyroAxis(GyroOffsetX, gyroScaleX),
+                    new SwitchStandardInputReport.ImuNormalizationParameters.GyroAxis(GyroOffsetY, gyroScaleY),
+                    new SwitchStandardInputReport.ImuNormalizationParameters.GyroAxis(GyroOffsetZ, gyroScaleZ));
+            }
+
             public unsafe void ApplyParameters(byte* payload)
             {
                 AccelOffsetX = ReadInt16(payload, 0);
@@ -479,6 +505,19 @@ namespace UnityJoycon
             private static unsafe short ReadInt16(byte* data, int index)
             {
                 return (short)(data[index] | (data[index + 1] << 8));
+            }
+
+            private static float CalculateAccelScale(short coefficient, short origin)
+            {
+                // (coefficient - origin) で割った値に4を掛ける（参照: imu_sensor_notes）
+                var denominator = coefficient - origin;
+                return denominator == 0 ? 0f : 4f / denominator;
+            }
+
+            private static float CalculateGyroScale(short coefficient, short offset)
+            {
+                var denominator = coefficient - offset;
+                return denominator == 0 ? 0f : 936f / denominator;
             }
         }
     }
