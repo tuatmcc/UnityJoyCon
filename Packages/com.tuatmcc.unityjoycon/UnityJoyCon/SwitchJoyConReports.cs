@@ -5,7 +5,7 @@ using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
 
-namespace UnityJoycon
+namespace UnityJoyCon
 {
     [StructLayout(LayoutKind.Sequential)]
     internal struct SwitchJoyConLeftHIDInputState : IInputStateTypeInfo

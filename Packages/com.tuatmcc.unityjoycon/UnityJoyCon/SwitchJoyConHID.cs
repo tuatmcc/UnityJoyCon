@@ -8,7 +8,7 @@ using UnityEngine.InputSystem.HID;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 
-namespace UnityJoycon
+namespace UnityJoyCon
 {
     public abstract class SwitchJoyConHID : InputDevice, IInputStateCallbackReceiver
     {

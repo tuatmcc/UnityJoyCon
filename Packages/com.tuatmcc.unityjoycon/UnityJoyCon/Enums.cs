@@ -1,4 +1,4 @@
-namespace UnityJoycon
+namespace UnityJoyCon
 {
     public enum Side
     {

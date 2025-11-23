@@ -3,7 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
-using UnityJoycon;
+using UnityJoyCon;
 
 public class JoyConLeft : MonoBehaviour
 {

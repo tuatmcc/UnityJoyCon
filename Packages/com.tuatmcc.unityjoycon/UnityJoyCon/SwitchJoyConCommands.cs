@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
 
-namespace UnityJoycon
+namespace UnityJoyCon
 {
     [StructLayout(LayoutKind.Explicit, Size = Size)]
     internal struct SwitchGenericSubCommandOutput : IInputDeviceCommandInfo
