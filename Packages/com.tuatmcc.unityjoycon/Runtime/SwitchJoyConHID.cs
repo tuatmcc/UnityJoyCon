@@ -28,6 +28,7 @@ namespace UnityJoycon
         private StickCalibrationState _stickCalibration;
         private IMUCalibrationState _imuCalibration;
         private double _lastCommandSentTime;
+        private byte _commandPacketNumber;
 
         // ReSharper disable once InconsistentNaming
         [InputControl(name = "capture", displayName = "Capture")]
@@ -91,7 +92,7 @@ namespace UnityJoycon
                 _ => throw new InvalidOperationException("Invalid product ID for Switch Joy-Con.")
             };
 
-            var configureOutputModeCommand = SwitchConfigureReportModeOutput.Create(0x02, 0x30);
+            var configureOutputModeCommand = SwitchConfigureReportModeOutput.Create(GetNextCommandPacketNumber(), 0x30);
             ExecuteCommand(ref configureOutputModeCommand);
         }
 
@@ -212,12 +213,20 @@ namespace UnityJoycon
             return true;
         }
 
+        private byte GetNextCommandPacketNumber()
+        {
+            var nextPacketNumber = _commandPacketNumber;
+            _commandPacketNumber = (byte)((_commandPacketNumber + 1) % 0x10);
+            return nextPacketNumber;
+        }
+
         private bool TryRequestStickParameters()
         {
             if (_stickCalibration.ParametersLoaded) return false;
 
             var stickParametersCommand =
-                SwitchReadSPIFlashOutput.Create(0x01, GetStickParametersAddress(), StickParameterLength);
+                SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(), GetStickParametersAddress(),
+                    StickParameterLength);
             ExecuteCommand(ref stickParametersCommand);
             _lastCommandSentTime = lastUpdateTime;
             return true;
@@ -230,13 +239,15 @@ namespace UnityJoycon
             if (!_stickCalibration.UserCalibrationLoaded)
             {
                 var stickUserCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(0x00, GetStickUserCalibrationAddress(), StickCalibrationLength);
+                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(), GetStickUserCalibrationAddress(),
+                        StickCalibrationLength);
                 ExecuteCommand(ref stickUserCalibrationCommand);
             }
             else
             {
                 var stickCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(0x00, GetStickFactoryCalibrationAddress(), StickCalibrationLength);
+                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(), GetStickFactoryCalibrationAddress(),
+                        StickCalibrationLength);
                 ExecuteCommand(ref stickCalibrationCommand);
             }
 
@@ -249,7 +260,8 @@ namespace UnityJoycon
             if (_imuCalibration.ParametersLoaded) return false;
 
             var imuParametersCommand =
-                SwitchReadSPIFlashOutput.Create(0x00, SwitchReadSPIFlashOutput.Address.ImuParameters,
+                SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
+                    SwitchReadSPIFlashOutput.Address.ImuParameters,
                     IMUParameterLength);
             ExecuteCommand(ref imuParametersCommand);
             _lastCommandSentTime = lastUpdateTime;
@@ -263,14 +275,16 @@ namespace UnityJoycon
             if (!_imuCalibration.UserCalibrationLoaded)
             {
                 var imuUserCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(0x00, SwitchReadSPIFlashOutput.Address.ImuUserCalibration,
+                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
+                        SwitchReadSPIFlashOutput.Address.ImuUserCalibration,
                         IMUCalibrationLength);
                 ExecuteCommand(ref imuUserCalibrationCommand);
             }
             else
             {
                 var imuCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(0x00, SwitchReadSPIFlashOutput.Address.ImuFactoryCalibration, 24);
+                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
+                        SwitchReadSPIFlashOutput.Address.ImuFactoryCalibration, 24);
                 ExecuteCommand(ref imuCalibrationCommand);
             }
 
