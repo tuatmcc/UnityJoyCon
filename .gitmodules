@@ -1,3 +1,0 @@
-[submodule "etc/hidapi"]
-	path = etc/hidapi
-	url = https://github.com/libusb/hidapi.git

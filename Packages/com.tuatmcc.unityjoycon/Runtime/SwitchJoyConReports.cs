@@ -166,24 +166,24 @@ namespace UnityJoycon
             };
         }
 
-        private StickRaw ReadStick(Side side)
+        private (ushort rawX, ushort rawY) ReadStick(Side side)
         {
             return side switch
             {
-                Side.Left => new StickRaw(
+                Side.Left => (
                     (ushort)(left0 | ((left1 & 0x0f) << 8)),
                     (ushort)(((left1 & 0xf0) >> 4) | (left2 << 4))),
-                Side.Right => new StickRaw(
+                Side.Right => (
                     (ushort)(right0 | ((right1 & 0x0f) << 8)),
                     (ushort)(((right1 & 0xf0) >> 4) | (right2 << 4))),
                 _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
             };
         }
 
-        private static Vector2 ConvertStick(StickRaw raw, StickNormalizationParameters parameters)
+        private static Vector2 ConvertStick((ushort, ushort) raw, StickNormalizationParameters parameters)
         {
-            var diffX = raw.X - parameters.X.Center;
-            var diffY = raw.Y - parameters.Y.Center;
+            var diffX = raw.Item1 - parameters.X.Center;
+            var diffY = raw.Item2 - parameters.Y.Center;
 
             if (Math.Abs(diffX) < parameters.DeadZone) diffX = 0;
             if (Math.Abs(diffY) < parameters.DeadZone) diffY = 0;
