@@ -31,6 +31,7 @@ namespace UnityJoycon
         private bool _imuEnabled;
 
         private double _lastCommandSentTime;
+        private double _lastStandardInputReceivedTime;
         private byte _commandPacketNumber;
 
         // ReSharper disable once InconsistentNaming
@@ -70,6 +71,8 @@ namespace UnityJoycon
         {
             if (!ShouldSendCommand()) return;
 
+            if (TryChangeReportMode()) return;
+
             if (TryRequestStickParameters()) return;
             if (TryRequestStickCalibration()) return;
 
@@ -96,11 +99,6 @@ namespace UnityJoycon
                 ProductIdRight => Side.Right,
                 _ => throw new InvalidOperationException("Invalid product ID for Switch Joy-Con.")
             };
-
-            var configureOutputModeCommand =
-                SwitchGenericSubCommandOutput.Create(GetNextCommandPacketNumber(),
-                    SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
-            ExecuteCommand(ref configureOutputModeCommand);
         }
 
         protected override void FinishSetup()
@@ -139,6 +137,7 @@ namespace UnityJoycon
 
         private unsafe void HandleStandardInput(SwitchStandardInputReport* report, InputEventPtr eventPtr)
         {
+            _lastStandardInputReceivedTime = lastUpdateTime;
             _imuEnabled = report->IsEnabledIMU();
             if (!_imuEnabled) return;
             if (!_stickCalibration.IsReady) return;
@@ -225,6 +224,20 @@ namespace UnityJoycon
             var nextPacketNumber = _commandPacketNumber;
             _commandPacketNumber = (byte)((_commandPacketNumber + 1) % 0x10);
             return nextPacketNumber;
+        }
+
+        private bool TryChangeReportMode()
+        {
+            const double standardReportTimeoutSeconds = 2.0;
+            // 一定時間標準入力レポートが受信されていない場合、レポートモードを再設定する
+            if (!(lastUpdateTime > _lastStandardInputReceivedTime + standardReportTimeoutSeconds)) return false;
+
+            var configureOutputModeCommand =
+                SwitchGenericSubCommandOutput.Create(GetNextCommandPacketNumber(),
+                    SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
+            ExecuteCommand(ref configureOutputModeCommand);
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
         }
 
         private bool TryRequestStickParameters()
