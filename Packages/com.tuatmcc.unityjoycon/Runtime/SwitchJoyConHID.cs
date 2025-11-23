@@ -144,11 +144,7 @@ namespace UnityJoycon
 
             var data = report->ToHIDInputReport(
                 _side,
-                _stickCalibration.DeadZone,
-                _stickCalibration.CenterX,
-                _stickCalibration.MinX, _stickCalibration.MaxX,
-                _stickCalibration.CenterY,
-                _stickCalibration.MinY, _stickCalibration.MaxY);
+                _stickCalibration.ToNormalizationParameters());
 
             InputState.Change(this, data, eventPtr: eventPtr);
         }
@@ -356,6 +352,17 @@ namespace UnityJoycon
             public ushort MaxY { get; private set; }
 
             public bool IsReady => ParametersLoaded && CalibrationLoaded;
+
+            public SwitchStandardInputReport.StickNormalizationParameters ToNormalizationParameters()
+            {
+                if (!IsReady)
+                    throw new InvalidOperationException("Stick calibration is not ready.");
+
+                return new SwitchStandardInputReport.StickNormalizationParameters(
+                    DeadZone,
+                    CenterX, MinX, MaxX,
+                    CenterY, MinY, MaxY);
+            }
 
             public unsafe void ApplyParameters(byte* payload)
             {

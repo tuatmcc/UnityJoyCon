@@ -125,41 +125,10 @@ namespace UnityJoycon
         // Sub command reply data
         [FieldOffset(13)] public SubCommandReplyData subCommandReply;
 
-        public SwitchJoyConHIDInputState ToHIDInputReport(Side side, ushort stickDeadZone, ushort stickCenterX,
-            ushort stickMinX, ushort stickMaxX, ushort stickCenterY, ushort stickMinY, ushort stickMaxY)
+        public SwitchJoyConHIDInputState ToHIDInputReport(Side side, StickNormalizationParameters stickParams)
         {
-            var rawX = side switch
-            {
-                Side.Left => (ushort)(left0 | ((left1 & 0x0f) << 8)),
-                Side.Right => (ushort)(right0 | ((right1 & 0x0f) << 8)),
-                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
-            };
-
-            var rawY = side switch
-            {
-                Side.Left => (ushort)(((left1 & 0xf0) >> 4) | (left2 << 4)),
-                Side.Right => (ushort)(((right1 & 0xf0) >> 4) | (right2 << 4)),
-                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
-            };
-
-            var diffX = rawX - stickCenterX;
-            var diffY = rawY - stickCenterY;
-
-            if (Math.Abs(diffX) < stickDeadZone) diffX = 0;
-            if (Math.Abs(diffY) < stickDeadZone) diffY = 0;
-
-            var normX = diffX > 0
-                ? (float)diffX / stickMaxX
-                : (float)diffX / stickMinX;
-            var normY = diffY > 0
-                ? (float)diffY / stickMaxY
-                : (float)diffY / stickMinY;
-            var stick = new Vector2(normX, normY);
-
-            var state = new SwitchJoyConHIDInputState
-            {
-                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0
-            };
+            var stick = NormalizeStick(ReadStick(side), stickParams);
+            var state = CreateButtonState();
 
             switch (side)
             {
@@ -176,6 +145,46 @@ namespace UnityJoycon
             return state;
         }
 
+        private SwitchJoyConHIDInputState CreateButtonState()
+        {
+            return new SwitchJoyConHIDInputState
+            {
+                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0
+            };
+        }
+
+        private StickRaw ReadStick(Side side)
+        {
+            return side switch
+            {
+                Side.Left => new StickRaw(
+                    (ushort)(left0 | ((left1 & 0x0f) << 8)),
+                    (ushort)(((left1 & 0xf0) >> 4) | (left2 << 4))),
+                Side.Right => new StickRaw(
+                    (ushort)(right0 | ((right1 & 0x0f) << 8)),
+                    (ushort)(((right1 & 0xf0) >> 4) | (right2 << 4))),
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
+            };
+        }
+
+        private static Vector2 NormalizeStick(StickRaw raw, StickNormalizationParameters parameters)
+        {
+            var diffX = raw.X - parameters.X.Center;
+            var diffY = raw.Y - parameters.Y.Center;
+
+            if (Math.Abs(diffX) < parameters.DeadZone) diffX = 0;
+            if (Math.Abs(diffY) < parameters.DeadZone) diffY = 0;
+
+            var normX = diffX > 0
+                ? (float)diffX / parameters.X.Max
+                : (float)diffX / parameters.X.Min;
+            var normY = diffY > 0
+                ? (float)diffY / parameters.Y.Max
+                : (float)diffY / parameters.Y.Min;
+
+            return new Vector2(normX, normY);
+        }
+
         public bool IsEnabledIMU()
         {
             unsafe
@@ -190,6 +199,37 @@ namespace UnityJoycon
             }
 
             return false;
+        }
+
+        internal readonly struct StickNormalizationParameters
+        {
+            public StickNormalizationParameters(
+                ushort deadZone,
+                ushort centerX, ushort minX, ushort maxX,
+                ushort centerY, ushort minY, ushort maxY)
+            {
+                DeadZone = deadZone;
+                X = new Axis(centerX, minX, maxX);
+                Y = new Axis(centerY, minY, maxY);
+            }
+
+            public ushort DeadZone { get; }
+            public Axis X { get; }
+            public Axis Y { get; }
+
+            internal readonly struct Axis
+            {
+                public Axis(ushort center, ushort min, ushort max)
+                {
+                    Center = center;
+                    Min = min;
+                    Max = max;
+                }
+
+                public ushort Center { get; }
+                public ushort Min { get; }
+                public ushort Max { get; }
+            }
         }
     }
 
