@@ -7,6 +7,7 @@ Joy-Con を HID デバイスとして自動認識し、ボタン・スティッ�
 ## 特徴
 - Unity Input System へのレイアウトを自動登録し、左右 Joy-Con を `SwitchJoyConLeftHID` / `SwitchJoyConRightHID` として認識
 - ボタン / スティック / 加速度 / ジャイロを標準の InputControl として取得可能
+- 相補フィルタによる加速度・ジャイロからの姿勢推定をサポート
 - Unity Input System デフォルトの `IDualMotorRumble` 以外にも、 HID 振動機能をサポート
 - ネイティブプラグイン不要でクロスプラットフォーム対応（Windows / macOS / Linux）
 
