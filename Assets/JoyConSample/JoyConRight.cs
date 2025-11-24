@@ -82,6 +82,8 @@ namespace JoyConSample
             if (_joyConRight.rightTrigger.wasReleasedThisFrame) _joyConRight.ResetHaptics();
 
             transform.rotation = _joyConRight.rotation.ReadValue();
+
+            if (_joyConRight.buttonWest.wasPressedThisFrame) _joyConRight.ResetRotation();
         }
     }
 }

@@ -121,6 +121,11 @@ namespace UnityJoyCon
             SendRumble();
         }
 
+        public void ResetRotation()
+        {
+            _rotation = Quaternion.identity;
+        }
+
         protected override void OnAdded()
         {
             base.OnAdded();

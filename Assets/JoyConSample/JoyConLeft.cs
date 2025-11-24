@@ -79,6 +79,7 @@ namespace JoyConSample
             gyroZSlider.value = gyro.z;
 
             transform.rotation = _joyConLeft.rotation.ReadValue();
+            if (_joyConLeft.leftTrigger.wasPressedThisFrame) _joyConLeft.ResetRotation();
         }
     }
 }
