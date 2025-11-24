@@ -29,9 +29,7 @@ namespace UnityJoyCon
         private IMUCalibrationState _imuCalibration;
         private bool _imuEnabled;
 
-        private double _lastCommandSentTime;
-        private double _lastStandardInputReceivedTime;
-
+        private JoyConInitializationPipeline _initializer;
         private StickCalibrationState _stickCalibration;
 
         public virtual Side Side => HIDDeviceDescriptor.productId switch
@@ -60,17 +58,7 @@ namespace UnityJoyCon
 
         void IInputStateCallbackReceiver.OnNextUpdate()
         {
-            if (!ShouldSendCommand()) return;
-
-            if (TryChangeReportMode()) return;
-
-            if (TryRequestStickParameters()) return;
-            if (TryRequestStickCalibration()) return;
-
-            if (TryRequestIMUParameters()) return;
-            if (TryRequestIMUCalibration()) return;
-
-            if (TryEnableIMU()) return;
+            _initializer?.Tick(lastUpdateTime);
         }
 
         bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
@@ -104,11 +92,7 @@ namespace UnityJoyCon
             base.FinishSetup();
             accelerometer = GetChildControl<Vector3Control>("accelerometer");
             gyroscope = GetChildControl<Vector3Control>("gyroscope");
-        }
-
-        private bool ShouldSendCommand()
-        {
-            return !(lastUpdateTime < _lastCommandSentTime + CommandIntervalSeconds);
+            _initializer ??= new JoyConInitializationPipeline(this);
         }
 
         private unsafe void HandleStateEvent(InputEventPtr eventPtr)
@@ -134,7 +118,7 @@ namespace UnityJoyCon
 
         private unsafe void HandleStandardInput(SwitchStandardInputReport* report, InputEventPtr eventPtr)
         {
-            _lastStandardInputReceivedTime = lastUpdateTime;
+            _initializer?.MarkStandardInputReceived(lastUpdateTime);
             _imuEnabled = report->IsEnabledIMU();
             if (!_imuEnabled) return;
             if (!_stickCalibration.IsReady) return;
@@ -234,103 +218,6 @@ namespace UnityJoyCon
             return nextPacketNumber;
         }
 
-        private bool TryChangeReportMode()
-        {
-            const double standardReportTimeoutSeconds = 2.0;
-            // 一定時間標準入力レポートが受信されていない場合、レポートモードを再設定する
-            if (!(lastUpdateTime > _lastStandardInputReceivedTime + standardReportTimeoutSeconds)) return false;
-
-            var configureOutputModeCommand =
-                SwitchGenericSubCommandOutput.Create(GetNextCommandPacketNumber(),
-                    SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
-            ExecuteCommand(ref configureOutputModeCommand);
-            _lastCommandSentTime = lastUpdateTime;
-            return true;
-        }
-
-        private bool TryRequestStickParameters()
-        {
-            if (_stickCalibration.ParametersLoaded) return false;
-
-            var stickParametersCommand =
-                SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(), GetStickParametersAddress(),
-                    StickParameterLength);
-            ExecuteCommand(ref stickParametersCommand);
-            _lastCommandSentTime = lastUpdateTime;
-            return true;
-        }
-
-        private bool TryRequestStickCalibration()
-        {
-            if (_stickCalibration.CalibrationLoaded) return false;
-
-            if (!_stickCalibration.UserCalibrationLoaded)
-            {
-                var stickUserCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(), GetStickUserCalibrationAddress(),
-                        StickCalibrationLength);
-                ExecuteCommand(ref stickUserCalibrationCommand);
-            }
-            else
-            {
-                var stickCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(), GetStickFactoryCalibrationAddress(),
-                        StickCalibrationLength);
-                ExecuteCommand(ref stickCalibrationCommand);
-            }
-
-            _lastCommandSentTime = lastUpdateTime;
-            return true;
-        }
-
-        private bool TryRequestIMUParameters()
-        {
-            if (_imuCalibration.ParametersLoaded) return false;
-
-            var imuParametersCommand =
-                SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
-                    SwitchReadSPIFlashOutput.Address.IMUParameters,
-                    IMUParameterLength);
-            ExecuteCommand(ref imuParametersCommand);
-            _lastCommandSentTime = lastUpdateTime;
-            return true;
-        }
-
-        private bool TryRequestIMUCalibration()
-        {
-            if (_imuCalibration.CalibrationLoaded) return false;
-
-            if (!_imuCalibration.UserCalibrationLoaded)
-            {
-                var imuUserCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
-                        SwitchReadSPIFlashOutput.Address.IMUUserCalibration,
-                        IMUCalibrationLength);
-                ExecuteCommand(ref imuUserCalibrationCommand);
-            }
-            else
-            {
-                var imuCalibrationCommand =
-                    SwitchReadSPIFlashOutput.Create(GetNextCommandPacketNumber(),
-                        SwitchReadSPIFlashOutput.Address.IMUFactoryCalibration, 24);
-                ExecuteCommand(ref imuCalibrationCommand);
-            }
-
-            _lastCommandSentTime = lastUpdateTime;
-            return true;
-        }
-
-        private bool TryEnableIMU()
-        {
-            if (_imuEnabled) return false;
-
-            var enableImuCommand = SwitchGenericSubCommandOutput.Create(GetNextCommandPacketNumber(),
-                SubCommandBase.SubCommand.ConfigureIMU, 0x01);
-            ExecuteCommand(ref enableImuCommand);
-            _lastCommandSentTime = lastUpdateTime;
-            return true;
-        }
-
         private SwitchReadSPIFlashOutput.Address GetStickUserCalibrationAddress()
         {
             return Side switch
@@ -365,6 +252,144 @@ namespace UnityJoyCon
         {
             StandardInput = 0x30,
             SubCommandReply = 0x21
+        }
+
+        private sealed class JoyConInitializationPipeline
+        {
+            private const double StandardReportTimeoutSeconds = 2.0;
+
+            private readonly SwitchJoyConHID _owner;
+            private double _lastCommandSentTime;
+            private double _lastStandardInputReceivedTime;
+
+            public JoyConInitializationPipeline(SwitchJoyConHID owner)
+            {
+                _owner = owner;
+            }
+
+            public void Tick(double now)
+            {
+                if (!ShouldSendCommand(now)) return;
+
+                if (TryChangeReportMode(now)) return;
+
+                if (TryRequestStickParameters(now)) return;
+                if (TryRequestStickCalibration(now)) return;
+
+                if (TryRequestIMUParameters(now)) return;
+                if (TryRequestIMUCalibration(now)) return;
+
+                if (TryEnableIMU(now)) return;
+            }
+
+            public void MarkStandardInputReceived(double time)
+            {
+                _lastStandardInputReceivedTime = time;
+            }
+
+            private bool ShouldSendCommand(double now)
+            {
+                return !(now < _lastCommandSentTime + CommandIntervalSeconds);
+            }
+
+            private bool TryChangeReportMode(double now)
+            {
+                // 一定時間標準入力レポートが受信されていない場合、レポートモードを再設定する
+                if (!(now > _lastStandardInputReceivedTime + StandardReportTimeoutSeconds)) return false;
+
+                var configureOutputModeCommand =
+                    SwitchGenericSubCommandOutput.Create(_owner.GetNextCommandPacketNumber(),
+                        SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
+                _owner.ExecuteCommand(ref configureOutputModeCommand);
+                _lastCommandSentTime = now;
+                return true;
+            }
+
+            private bool TryRequestStickParameters(double now)
+            {
+                if (_owner._stickCalibration.ParametersLoaded) return false;
+
+                var stickParametersCommand =
+                    SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
+                        _owner.GetStickParametersAddress(),
+                        StickParameterLength);
+                _owner.ExecuteCommand(ref stickParametersCommand);
+                _lastCommandSentTime = now;
+                return true;
+            }
+
+            private bool TryRequestStickCalibration(double now)
+            {
+                if (_owner._stickCalibration.CalibrationLoaded) return false;
+
+                if (!_owner._stickCalibration.UserCalibrationLoaded)
+                {
+                    var stickUserCalibrationCommand =
+                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
+                            _owner.GetStickUserCalibrationAddress(),
+                            StickCalibrationLength);
+                    _owner.ExecuteCommand(ref stickUserCalibrationCommand);
+                }
+                else
+                {
+                    var stickCalibrationCommand =
+                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
+                            _owner.GetStickFactoryCalibrationAddress(),
+                            StickCalibrationLength);
+                    _owner.ExecuteCommand(ref stickCalibrationCommand);
+                }
+
+                _lastCommandSentTime = now;
+                return true;
+            }
+
+            private bool TryRequestIMUParameters(double now)
+            {
+                if (_owner._imuCalibration.ParametersLoaded) return false;
+
+                var imuParametersCommand =
+                    SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
+                        SwitchReadSPIFlashOutput.Address.IMUParameters,
+                        IMUParameterLength);
+                _owner.ExecuteCommand(ref imuParametersCommand);
+                _lastCommandSentTime = now;
+                return true;
+            }
+
+            private bool TryRequestIMUCalibration(double now)
+            {
+                if (_owner._imuCalibration.CalibrationLoaded) return false;
+
+                if (!_owner._imuCalibration.UserCalibrationLoaded)
+                {
+                    var imuUserCalibrationCommand =
+                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
+                            SwitchReadSPIFlashOutput.Address.IMUUserCalibration,
+                            IMUCalibrationLength);
+                    _owner.ExecuteCommand(ref imuUserCalibrationCommand);
+                }
+                else
+                {
+                    var imuCalibrationCommand =
+                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
+                            SwitchReadSPIFlashOutput.Address.IMUFactoryCalibration, 24);
+                    _owner.ExecuteCommand(ref imuCalibrationCommand);
+                }
+
+                _lastCommandSentTime = now;
+                return true;
+            }
+
+            private bool TryEnableIMU(double now)
+            {
+                if (_owner._imuEnabled) return false;
+
+                var enableImuCommand = SwitchGenericSubCommandOutput.Create(_owner.GetNextCommandPacketNumber(),
+                    SubCommandBase.SubCommand.ConfigureIMU, 0x01);
+                _owner.ExecuteCommand(ref enableImuCommand);
+                _lastCommandSentTime = now;
+                return true;
+            }
         }
 
         // ReSharper disable InconsistentNaming
