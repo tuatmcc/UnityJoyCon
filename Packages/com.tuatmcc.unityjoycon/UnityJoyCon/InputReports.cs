@@ -119,6 +119,8 @@ namespace UnityJoyCon
             var (rawAccelX, rawAccelY, rawAccelZ) = data.GetAcceleration();
             var (rawGyroX, rawGyroY, rawGyroZ) = data.GetGyroscope();
 
+            // 加速度と角速度の軸方向がJoy-Conの向きによって変わるため調整する
+            // JoyConのZR/ZLボタンがZ軸正方向を向く左手系として扱う
             var acceleration = new Vector3(
                 (side == Side.Left ? -1f : 1f) * ConvertAccel(rawAccelY, parameters.AccelY),
                 (side == Side.Left ? 1f : -1f) * ConvertAccel(rawAccelZ, parameters.AccelZ),
@@ -126,9 +128,9 @@ namespace UnityJoyCon
             );
 
             var angularVelocity = new Vector3(
-                (side == Side.Left ? -1f : 1f) * ConvertGyro(rawGyroY, parameters.GyroY),
-                (side == Side.Left ? 1f : -1f) * ConvertGyro(rawGyroZ, parameters.GyroZ),
-                ConvertGyro(rawGyroX, parameters.GyroX)
+                (side == Side.Left ? 1f : -1f) * ConvertGyro(rawGyroY, parameters.GyroY),
+                (side == Side.Left ? -1f : 1f) * ConvertGyro(rawGyroZ, parameters.GyroZ),
+                -ConvertGyro(rawGyroX, parameters.GyroX)
             );
 
             return new IMUFrame(acceleration, angularVelocity);
