@@ -40,8 +40,10 @@ Input Actions アセット上で通常のゲームパッドと同様に値を扱
 実際のコード例は `Assets/JoyConLeft.cs` および `Assets/JoyConRight.cs` を参照してください。
 
 ## サンプルシーン
-- `Assets/JoyConRight.cs` は Joy-Con のステートを取得し GameObject に反映するスクリプトです。
-- `Assets/SampleJoyCon.unity` を実行すると、押したボタンの色が変化し、 IMU のデータが UI で表示されます。
+
+`Assets/JoyConSample/JoyConSample.unity` にサンプルシーンが含まれています。
+このシーンでは Joy-Con のボタン・スティック・IMU データを UI に表示する簡単なデモが実装されています。
+Joy-Con をペアリングしてシーンを再生することで、動作確認や使用例を確認できます。
 
 ## ライセンス
 
