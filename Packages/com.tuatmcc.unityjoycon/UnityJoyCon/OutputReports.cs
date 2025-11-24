@@ -21,13 +21,14 @@ namespace UnityJoyCon
         [FieldOffset(InputDeviceCommand.BaseCommandSize + SubCommandBase.Size)]
         public byte data;
 
-        public static GenericSubCommandOutputReport Create(byte packetNumber, SubCommandBase.SubCommand subCommand,
+        public static GenericSubCommandOutputReport Create(byte packetNumber, ReadOnlySpan<byte> rumbleData,
+            SubCommandBase.SubCommand subCommand,
             byte data)
         {
             return new GenericSubCommandOutputReport
             {
                 baseCommand = new InputDeviceCommand(Type, Size),
-                subCommandBase = SubCommandBase.Create(packetNumber, subCommand),
+                subCommandBase = SubCommandBase.Create(packetNumber, rumbleData, subCommand),
                 data = data
             };
         }
@@ -52,14 +53,16 @@ namespace UnityJoyCon
         [FieldOffset(InputDeviceCommand.BaseCommandSize + SubCommandBase.Size + 4)]
         public byte length;
 
-        public static ReadSPIFlashOutputReport Create(byte packetNumber, Address address, byte length)
+        public static ReadSPIFlashOutputReport Create(byte packetNumber, ReadOnlySpan<byte> rumbleData, Address address,
+            byte length)
         {
             var addr = (uint)address;
 
             var command = new ReadSPIFlashOutputReport
             {
                 baseCommand = new InputDeviceCommand(Type, Size),
-                subCommandBase = SubCommandBase.Create(packetNumber, SubCommandBase.SubCommand.ReadSPIFlash),
+                subCommandBase =
+                    SubCommandBase.Create(packetNumber, rumbleData, SubCommandBase.SubCommand.ReadSPIFlash),
                 // address to be set below
                 length = length
             };
@@ -127,8 +130,11 @@ namespace UnityJoyCon
         [FieldOffset(2)] public fixed byte rumbleData[8];
         [FieldOffset(10)] public byte subCommand;
 
-        public static SubCommandBase Create(byte packetNumber, SubCommand subCommand)
+        public static SubCommandBase Create(byte packetNumber, ReadOnlySpan<byte> rumbleData, SubCommand subCommand)
         {
+            if (rumbleData.Length != 8)
+                throw new ArgumentException("Rumble data must be 8 bytes long.", nameof(rumbleData));
+
             var subCommandBase = new SubCommandBase
             {
                 reportId = 0x01,
@@ -137,14 +143,7 @@ namespace UnityJoyCon
                 subCommand = (byte)subCommand
             };
 
-            subCommandBase.rumbleData[0] = 0x00;
-            subCommandBase.rumbleData[1] = 0x01;
-            subCommandBase.rumbleData[2] = 0x40;
-            subCommandBase.rumbleData[3] = 0x40;
-            subCommandBase.rumbleData[4] = 0x00;
-            subCommandBase.rumbleData[5] = 0x01;
-            subCommandBase.rumbleData[6] = 0x40;
-            subCommandBase.rumbleData[7] = 0x40;
+            for (var i = 0; i < 8; i++) subCommandBase.rumbleData[i] = rumbleData[i];
 
             return subCommandBase;
         }

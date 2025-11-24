@@ -32,14 +32,21 @@ namespace UnityJoyCon
         // ReSharper restore InconsistentNaming
 
         private static readonly List<SwitchJoyConHID> AllDevices = new();
-        private byte _commandPacketNumber;
 
         private bool _haveParsedHIDDescriptor;
         private HID.HIDDeviceDescriptor _hidDeviceDescriptor;
 
+        private readonly float _lowFrequencyHz = 160f;
+        private readonly float _highFrequencyHz = 320f;
+        private readonly float _lowFrequencyAmplitude = 0f;
+        private readonly float _highFrequencyAmplitude = 0f;
+        private readonly bool _hapticsPaused = false;
+
         private bool _imuEnabled;
         private double _lastCommandSentTime;
         private double _lastStandardInputReceivedTime;
+        private byte _commandPacketNumber;
+
         private StickCalibrationState _stickCalibration;
         private IMUCalibrationState _imuCalibration;
 
@@ -240,6 +247,16 @@ namespace UnityJoyCon
             return nextPacketNumber;
         }
 
+        private byte[] GetRumbleData()
+        {
+            if (_hapticsPaused)
+                // ニュートラル状態のバイブレーションデータを返す
+                return RumbleEncoder.Encode(160f, 320f, 0f, 0f);
+
+            return RumbleEncoder.Encode(_lowFrequencyHz, _highFrequencyHz,
+                _lowFrequencyAmplitude, _highFrequencyAmplitude);
+        }
+
         private bool ShouldSendCommand()
         {
             return !(lastUpdateTime < _lastCommandSentTime + CommandIntervalSeconds);
@@ -251,7 +268,7 @@ namespace UnityJoyCon
             if (!(lastUpdateTime > _lastStandardInputReceivedTime + StandardReportTimeoutSeconds)) return false;
 
             var configureOutputModeCommand =
-                GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(),
+                GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                     SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
             ExecuteCommand(ref configureOutputModeCommand);
 
@@ -264,7 +281,7 @@ namespace UnityJoyCon
             if (_stickCalibration.ParametersLoaded) return false;
 
             var stickParametersCommand =
-                ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                     ReadSPIFlashOutputReport.GetStickParametersAddress(Side),
                     StickParameterLength);
             ExecuteCommand(ref stickParametersCommand);
@@ -280,7 +297,7 @@ namespace UnityJoyCon
             if (!_stickCalibration.UserCalibrationLoaded)
             {
                 var stickUserCalibrationCommand =
-                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                         ReadSPIFlashOutputReport.GetStickUserCalibrationAddress(Side),
                         StickCalibrationLength);
                 ExecuteCommand(ref stickUserCalibrationCommand);
@@ -288,7 +305,7 @@ namespace UnityJoyCon
             else
             {
                 var stickCalibrationCommand =
-                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                         ReadSPIFlashOutputReport.GetStickFactoryCalibrationAddress(Side),
                         StickCalibrationLength);
                 ExecuteCommand(ref stickCalibrationCommand);
@@ -303,7 +320,7 @@ namespace UnityJoyCon
             if (_imuCalibration.ParametersLoaded) return false;
 
             var imuParametersCommand =
-                ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                     ReadSPIFlashOutputReport.Address.IMUParameters,
                     IMUParameterLength);
             ExecuteCommand(ref imuParametersCommand);
@@ -319,7 +336,7 @@ namespace UnityJoyCon
             if (!_imuCalibration.UserCalibrationLoaded)
             {
                 var imuUserCalibrationCommand =
-                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                         ReadSPIFlashOutputReport.Address.IMUUserCalibration,
                         IMUCalibrationLength);
                 ExecuteCommand(ref imuUserCalibrationCommand);
@@ -327,7 +344,7 @@ namespace UnityJoyCon
             else
             {
                 var imuCalibrationCommand =
-                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                         ReadSPIFlashOutputReport.Address.IMUFactoryCalibration, 24);
                 ExecuteCommand(ref imuCalibrationCommand);
             }
@@ -340,7 +357,7 @@ namespace UnityJoyCon
         {
             if (_imuEnabled) return false;
 
-            var enableImuCommand = GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(),
+            var enableImuCommand = GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
                 SubCommandBase.SubCommand.ConfigureIMU, 0x01);
             ExecuteCommand(ref enableImuCommand);
             _lastCommandSentTime = lastUpdateTime;

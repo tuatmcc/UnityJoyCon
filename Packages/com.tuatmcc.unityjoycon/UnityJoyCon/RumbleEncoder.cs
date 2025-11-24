@@ -7,7 +7,23 @@ namespace UnityJoyCon
         private const float HFMin = 81.75177f, HFMax = 1252.572266f; // HF ≈81.75–1252.57 Hz
         private const float LFMin = 40.875885f, LFMax = 626.286133f; // LF ≈40.87–626.28 Hz
 
-        public static byte[] EncodeSide(float lfHz, float hfHz, float lfAmp, float hfAmp)
+        public static byte[] Encode(float lfHz, float hfHz, float lfAmp, float hfAmp)
+        {
+            var side = EncodeSide(lfHz, hfHz, lfAmp, hfAmp);
+
+            var b = new byte[8];
+            b[0] = side[0];
+            b[1] = side[1];
+            b[2] = side[2];
+            b[3] = side[3];
+            b[4] = side[0];
+            b[5] = side[1];
+            b[6] = side[2];
+            b[7] = side[3];
+            return b;
+        }
+
+        private static byte[] EncodeSide(float lfHz, float hfHz, float lfAmp, float hfAmp)
         {
             hfHz = Mathf.Clamp(hfHz, HFMin, HFMax);
             lfHz = Mathf.Clamp(lfHz, LFMin, LFMax);
