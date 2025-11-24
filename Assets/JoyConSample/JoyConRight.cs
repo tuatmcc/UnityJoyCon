@@ -77,6 +77,9 @@ namespace JoyConSample
             gyroXSlider.value = gyro.x;
             gyroYSlider.value = gyro.y;
             gyroZSlider.value = gyro.z;
+
+            if (_joyConRight.rightTrigger.wasPressedThisFrame) _joyConRight.SetMotorSpeeds(0.5f, 0.0f);
+            if (_joyConRight.rightTrigger.wasReleasedThisFrame) _joyConRight.ResetHaptics();
         }
     }
 }

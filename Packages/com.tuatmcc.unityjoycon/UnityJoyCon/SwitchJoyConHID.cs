@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
+using UnityEngine.InputSystem.Haptics;
 using UnityEngine.InputSystem.HID;
 using UnityEngine.InputSystem.LowLevel;
 
 namespace UnityJoyCon
 {
-    public abstract class SwitchJoyConHID : InputDevice, IInputStateCallbackReceiver
+    public abstract class SwitchJoyConHID : InputDevice, IDualMotorRumble, IInputStateCallbackReceiver
     {
         protected const int VendorId = 0x057e;
         protected const int ProductIdLeft = 0x2006;
@@ -16,6 +17,9 @@ namespace UnityJoyCon
 
         private const double CommandIntervalSeconds = 0.1;
         private const double StandardReportTimeoutSeconds = 2.0;
+
+        private const float DefaultRumbleLowFrequencyHz = 160.0f;
+        private const float DefaultRumbleHighFrequencyHz = 320.0f;
 
         private const byte StickParameterLength = 18;
         private const byte StickCalibrationLength = 9;
@@ -36,11 +40,11 @@ namespace UnityJoyCon
         private bool _haveParsedHIDDescriptor;
         private HID.HIDDeviceDescriptor _hidDeviceDescriptor;
 
-        private readonly float _lowFrequencyHz = 160f;
-        private readonly float _highFrequencyHz = 320f;
-        private readonly float _lowFrequencyAmplitude = 0f;
-        private readonly float _highFrequencyAmplitude = 0f;
-        private readonly bool _hapticsPaused = false;
+        private float _rumbleLowFrequencyHz = DefaultRumbleLowFrequencyHz;
+        private float _rumbleHighFrequencyHz = DefaultRumbleHighFrequencyHz;
+        private float _rumbleLowFrequencyAmplitude;
+        private float _rumbleHighFrequencyAmplitude;
+        private bool _rumblePaused;
 
         private bool _imuEnabled;
         private double _lastCommandSentTime;
@@ -69,30 +73,49 @@ namespace UnityJoyCon
             }
         }
 
-        void IInputStateCallbackReceiver.OnStateEvent(InputEventPtr eventPtr)
+        public void PauseHaptics()
         {
-            HandleStateEvent(eventPtr);
+            _rumblePaused = true;
+            SendRumble();
         }
 
-        void IInputStateCallbackReceiver.OnNextUpdate()
+        public void ResumeHaptics()
         {
-            if (!ShouldSendCommand()) return;
-
-            if (TryChangeReportMode()) return;
-
-            if (TryRequestStickParameters()) return;
-            if (TryRequestStickCalibration()) return;
-
-            if (TryRequestIMUParameters()) return;
-            if (TryRequestIMUCalibration()) return;
-
-            if (TryEnableIMU()) return;
+            _rumblePaused = false;
+            SendRumble();
         }
 
-        bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
-            ref uint offset)
+        public void ResetHaptics()
         {
-            return false;
+            _rumbleLowFrequencyHz = DefaultRumbleLowFrequencyHz;
+            _rumbleHighFrequencyHz = DefaultRumbleHighFrequencyHz;
+            _rumbleLowFrequencyAmplitude = 0.0f;
+            _rumbleHighFrequencyAmplitude = 0.0f;
+            _rumblePaused = false;
+            SendRumble();
+        }
+
+        public void SetMotorSpeeds(float lowFrequency, float highFrequency)
+        {
+            _rumbleLowFrequencyAmplitude = lowFrequency;
+            _rumbleHighFrequencyAmplitude = highFrequency;
+            _rumblePaused = false;
+            SendRumble();
+        }
+
+        public void SetRumble(float? lowFrequencyHz, float? highFrequencyHz, float? lowFrequencyAmplitude,
+            float? highFrequencyAmplitude)
+        {
+            if (lowFrequencyHz.HasValue)
+                _rumbleLowFrequencyHz = lowFrequencyHz.Value;
+            if (highFrequencyHz.HasValue)
+                _rumbleHighFrequencyHz = highFrequencyHz.Value;
+            if (lowFrequencyAmplitude.HasValue)
+                _rumbleLowFrequencyAmplitude = lowFrequencyAmplitude.Value;
+            if (highFrequencyAmplitude.HasValue)
+                _rumbleHighFrequencyAmplitude = highFrequencyAmplitude.Value;
+            _rumblePaused = false;
+            SendRumble();
         }
 
         protected override void OnAdded()
@@ -121,6 +144,32 @@ namespace UnityJoyCon
 
             accelerometer = GetChildControl<Vector3Control>("accelerometer");
             gyroscope = GetChildControl<Vector3Control>("gyroscope");
+        }
+
+        void IInputStateCallbackReceiver.OnStateEvent(InputEventPtr eventPtr)
+        {
+            HandleStateEvent(eventPtr);
+        }
+
+        void IInputStateCallbackReceiver.OnNextUpdate()
+        {
+            if (!ShouldSendCommand()) return;
+
+            if (TryChangeReportMode()) return;
+
+            if (TryRequestStickParameters()) return;
+            if (TryRequestStickCalibration()) return;
+
+            if (TryRequestIMUParameters()) return;
+            if (TryRequestIMUCalibration()) return;
+
+            if (TryEnableIMU()) return;
+        }
+
+        bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
+            ref uint offset)
+        {
+            return false;
         }
 
         private unsafe void HandleStateEvent(InputEventPtr eventPtr)
@@ -179,7 +228,7 @@ namespace UnityJoyCon
                 return;
             }
 
-            if (report->subCommandReply.subCommandId != (byte)SubCommandBase.SubCommand.ReadSPIFlash) return;
+            if (report->subCommandReply.subCommandId != (byte)SubCommand.ReadSPIFlash) return;
 
             var address = report->subCommandReply.data[0] |
                           ((uint)report->subCommandReply.data[1] << 8) |
@@ -249,12 +298,18 @@ namespace UnityJoyCon
 
         private byte[] GetRumbleData()
         {
-            if (_hapticsPaused)
+            if (_rumblePaused)
                 // ニュートラル状態のバイブレーションデータを返す
-                return RumbleEncoder.Encode(160f, 320f, 0f, 0f);
+                return RumbleEncoder.Encode(DefaultRumbleLowFrequencyHz, DefaultRumbleHighFrequencyHz, 0.0f, 0.0f);
 
-            return RumbleEncoder.Encode(_lowFrequencyHz, _highFrequencyHz,
-                _lowFrequencyAmplitude, _highFrequencyAmplitude);
+            return RumbleEncoder.Encode(_rumbleLowFrequencyHz, _rumbleHighFrequencyHz,
+                _rumbleLowFrequencyAmplitude, _rumbleHighFrequencyAmplitude);
+        }
+
+        private void SendRumble()
+        {
+            var setRumbleCommand = SetRumbleOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData());
+            ExecuteCommand(ref setRumbleCommand);
         }
 
         private bool ShouldSendCommand()
@@ -269,7 +324,7 @@ namespace UnityJoyCon
 
             var configureOutputModeCommand =
                 GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
-                    SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
+                    SubCommand.ConfigureReportMode, 0x30);
             ExecuteCommand(ref configureOutputModeCommand);
 
             _lastCommandSentTime = lastUpdateTime;
@@ -358,7 +413,7 @@ namespace UnityJoyCon
             if (_imuEnabled) return false;
 
             var enableImuCommand = GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(), GetRumbleData(),
-                SubCommandBase.SubCommand.ConfigureIMU, 0x01);
+                SubCommand.ConfigureIMU, 0x01);
             ExecuteCommand(ref enableImuCommand);
             _lastCommandSentTime = lastUpdateTime;
             return true;
