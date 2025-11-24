@@ -21,6 +21,15 @@ namespace UnityJoyCon
         private const byte IMUParameterLength = 6;
         private const byte IMUCalibrationLength = 24;
 
+        // ReSharper disable InconsistentNaming
+        public Vector3Control accelerometer { get; private set; }
+        public Vector3Control gyroscope { get; private set; }
+
+        public static SwitchJoyConHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConHID> all => AllDevices;
+        // ReSharper restore InconsistentNaming
+
         private static readonly List<SwitchJoyConHID> AllDevices = new();
         private byte _commandPacketNumber;
 
@@ -90,9 +99,11 @@ namespace UnityJoyCon
         protected override void FinishSetup()
         {
             base.FinishSetup();
+
+            _initializer = new JoyConInitializationPipeline(this);
+
             accelerometer = GetChildControl<Vector3Control>("accelerometer");
             gyroscope = GetChildControl<Vector3Control>("gyroscope");
-            _initializer ??= new JoyConInitializationPipeline(this);
         }
 
         private unsafe void HandleStateEvent(InputEventPtr eventPtr)
@@ -153,7 +164,10 @@ namespace UnityJoyCon
 
             if (report->subCommandReply.subCommandId != (byte)SubCommandBase.SubCommand.ReadSPIFlash) return;
 
-            var address = ReadAddress(report->subCommandReply.data);
+            var address = report->subCommandReply.data[0] |
+                          ((uint)report->subCommandReply.data[1] << 8) |
+                          ((uint)report->subCommandReply.data[2] << 16) |
+                          ((uint)report->subCommandReply.data[3] << 24);
             var length = report->subCommandReply.data[4];
             var payload = report->subCommandReply.data + 5;
 
@@ -162,13 +176,15 @@ namespace UnityJoyCon
 
         private unsafe void HandleSpiFlashReply(uint address, byte length, byte* payload)
         {
-            if (address == (uint)GetStickParametersAddress() && length == StickParameterLength)
+            if (address == (uint)SwitchReadSPIFlashOutput.GetStickParametersAddress(Side) &&
+                length == StickParameterLength)
             {
                 _stickCalibration.ApplyParameters(payload);
                 return;
             }
 
-            if (address == (uint)GetStickUserCalibrationAddress() && length == StickCalibrationLength)
+            if (address == (uint)SwitchReadSPIFlashOutput.GetStickUserCalibrationAddress(Side) &&
+                length == StickCalibrationLength)
             {
                 _stickCalibration.MarkUserCalibrationLoaded();
                 if (IsAllPayloadUnset(payload, StickCalibrationLength)) return;
@@ -177,7 +193,8 @@ namespace UnityJoyCon
                 return;
             }
 
-            if (address == (uint)GetStickFactoryCalibrationAddress() && length == StickCalibrationLength)
+            if (address == (uint)SwitchReadSPIFlashOutput.GetStickFactoryCalibrationAddress(Side) &&
+                length == StickCalibrationLength)
                 _stickCalibration.ApplyCalibration(payload, Side);
 
             if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUParameters && length == IMUParameterLength)
@@ -197,11 +214,6 @@ namespace UnityJoyCon
                 _imuCalibration.ApplyCalibration(payload);
         }
 
-        private static unsafe uint ReadAddress(byte* data)
-        {
-            return data[0] | ((uint)data[1] << 8) | ((uint)data[2] << 16) | ((uint)data[3] << 24);
-        }
-
         private static unsafe bool IsAllPayloadUnset(byte* payload, int length)
         {
             for (var i = 0; i < length; i++)
@@ -216,36 +228,6 @@ namespace UnityJoyCon
             var nextPacketNumber = _commandPacketNumber;
             _commandPacketNumber = (byte)((_commandPacketNumber + 1) % 0x10);
             return nextPacketNumber;
-        }
-
-        private SwitchReadSPIFlashOutput.Address GetStickUserCalibrationAddress()
-        {
-            return Side switch
-            {
-                Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickUserCalibration,
-                Side.Right => SwitchReadSPIFlashOutput.Address.RightStickUserCalibration,
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        }
-
-        private SwitchReadSPIFlashOutput.Address GetStickFactoryCalibrationAddress()
-        {
-            return Side switch
-            {
-                Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickFactoryCalibration,
-                Side.Right => SwitchReadSPIFlashOutput.Address.RightStickFactoryCalibration,
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        }
-
-        private SwitchReadSPIFlashOutput.Address GetStickParametersAddress()
-        {
-            return Side switch
-            {
-                Side.Left => SwitchReadSPIFlashOutput.Address.LeftStickParameters,
-                Side.Right => SwitchReadSPIFlashOutput.Address.RightStickParameters,
-                _ => throw new ArgumentOutOfRangeException()
-            };
         }
 
         private enum ReportId : byte
@@ -311,7 +293,7 @@ namespace UnityJoyCon
 
                 var stickParametersCommand =
                     SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                        _owner.GetStickParametersAddress(),
+                        SwitchReadSPIFlashOutput.GetStickParametersAddress(_owner.Side),
                         StickParameterLength);
                 _owner.ExecuteCommand(ref stickParametersCommand);
                 _lastCommandSentTime = now;
@@ -326,7 +308,7 @@ namespace UnityJoyCon
                 {
                     var stickUserCalibrationCommand =
                         SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                            _owner.GetStickUserCalibrationAddress(),
+                            SwitchReadSPIFlashOutput.GetStickUserCalibrationAddress(_owner.Side),
                             StickCalibrationLength);
                     _owner.ExecuteCommand(ref stickUserCalibrationCommand);
                 }
@@ -334,7 +316,7 @@ namespace UnityJoyCon
                 {
                     var stickCalibrationCommand =
                         SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                            _owner.GetStickFactoryCalibrationAddress(),
+                            SwitchReadSPIFlashOutput.GetStickFactoryCalibrationAddress(_owner.Side),
                             StickCalibrationLength);
                     _owner.ExecuteCommand(ref stickCalibrationCommand);
                 }
@@ -391,15 +373,6 @@ namespace UnityJoyCon
                 return true;
             }
         }
-
-        // ReSharper disable InconsistentNaming
-        public Vector3Control accelerometer { get; private set; }
-        public Vector3Control gyroscope { get; private set; }
-
-        public static SwitchJoyConHID current { get; private set; }
-
-        public new static IReadOnlyList<SwitchJoyConHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
     }
 
 #if UNITY_EDITOR
@@ -408,6 +381,24 @@ namespace UnityJoyCon
     [InputControlLayout(displayName = "Switch Joy-Con (L)", stateType = typeof(SwitchJoyConLeftHIDInputState))]
     public class SwitchJoyConLeftHID : SwitchJoyConHID
     {
+        public override Side Side => Side.Left;
+
+        // ReSharper disable InconsistentNaming
+        public DpadControl dpad { get; private set; }
+        public ButtonControl smallLeftShoulder { get; private set; }
+        public ButtonControl smallRightShoulder { get; private set; }
+        public ButtonControl leftShoulder { get; private set; }
+        public ButtonControl leftTrigger { get; private set; }
+        public ButtonControl selectButton { get; private set; }
+        public ButtonControl captureButton { get; private set; }
+        public ButtonControl leftStickButton { get; private set; }
+        public StickControl leftStick { get; private set; }
+
+        public new static SwitchJoyConLeftHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConLeftHID> all => AllDevices;
+        // ReSharper restore InconsistentNaming
+
         private static readonly List<SwitchJoyConLeftHID> AllDevices = new();
 
         static SwitchJoyConLeftHID()
@@ -415,8 +406,6 @@ namespace UnityJoyCon
             InputSystem.RegisterLayout<SwitchJoyConLeftHID>(matches: new InputDeviceMatcher().WithInterface("HID")
                 .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdLeft));
         }
-
-        public override Side Side => Side.Left;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
@@ -456,22 +445,6 @@ namespace UnityJoyCon
             leftStickButton = GetChildControl<ButtonControl>("leftStickPress");
             leftStick = GetChildControl<StickControl>("leftStick");
         }
-
-        // ReSharper disable InconsistentNaming
-        public DpadControl dpad { get; private set; }
-        public ButtonControl smallLeftShoulder { get; private set; }
-        public ButtonControl smallRightShoulder { get; private set; }
-        public ButtonControl leftShoulder { get; private set; }
-        public ButtonControl leftTrigger { get; private set; }
-        public ButtonControl selectButton { get; private set; }
-        public ButtonControl captureButton { get; private set; }
-        public ButtonControl leftStickButton { get; private set; }
-        public StickControl leftStick { get; private set; }
-
-        public new static SwitchJoyConLeftHID current { get; private set; }
-
-        public new static IReadOnlyList<SwitchJoyConLeftHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
     }
 
 #if UNITY_EDITOR
@@ -480,16 +453,34 @@ namespace UnityJoyCon
     [InputControlLayout(displayName = "Switch Joy-Con (R)", stateType = typeof(SwitchJoyConRightHIDInputState))]
     public class SwitchJoyConRightHID : SwitchJoyConHID
     {
-        private static readonly List<SwitchJoyConRightHID> AllDevices = new();
+        public override Side Side => Side.Right;
 
+        // ReSharper disable InconsistentNaming
+        public ButtonControl buttonWest { get; private set; }
+        public ButtonControl buttonNorth { get; private set; }
+        public ButtonControl buttonSouth { get; private set; }
+        public ButtonControl buttonEast { get; private set; }
+        public ButtonControl smallLeftShoulder { get; private set; }
+        public ButtonControl smallRightShoulder { get; private set; }
+        public ButtonControl rightShoulder { get; private set; }
+        public ButtonControl rightTrigger { get; private set; }
+        public ButtonControl startButton { get; private set; }
+        public ButtonControl homeButton { get; private set; }
+        public ButtonControl rightStickButton { get; private set; }
+        public StickControl rightStick { get; private set; }
+
+        public new static SwitchJoyConRightHID current { get; private set; }
+
+        public new static IReadOnlyList<SwitchJoyConRightHID> all => AllDevices;
+        // ReSharper restore InconsistentNaming
+
+        private static readonly List<SwitchJoyConRightHID> AllDevices = new();
 
         static SwitchJoyConRightHID()
         {
             InputSystem.RegisterLayout<SwitchJoyConRightHID>(matches: new InputDeviceMatcher().WithInterface("HID")
                 .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdRight));
         }
-
-        public override Side Side => Side.Right;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
@@ -532,24 +523,5 @@ namespace UnityJoyCon
             base.MakeCurrent();
             current = this;
         }
-
-        // ReSharper disable InconsistentNaming
-        public ButtonControl buttonWest { get; private set; }
-        public ButtonControl buttonNorth { get; private set; }
-        public ButtonControl buttonSouth { get; private set; }
-        public ButtonControl buttonEast { get; private set; }
-        public ButtonControl smallLeftShoulder { get; private set; }
-        public ButtonControl smallRightShoulder { get; private set; }
-        public ButtonControl rightShoulder { get; private set; }
-        public ButtonControl rightTrigger { get; private set; }
-        public ButtonControl startButton { get; private set; }
-        public ButtonControl homeButton { get; private set; }
-        public ButtonControl rightStickButton { get; private set; }
-        public StickControl rightStick { get; private set; }
-
-        public new static SwitchJoyConRightHID current { get; private set; }
-
-        public new static IReadOnlyList<SwitchJoyConRightHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
@@ -70,6 +71,37 @@ namespace UnityJoyCon
 
             return command;
         }
+
+        public static Address GetStickUserCalibrationAddress(Side side)
+        {
+            return side switch
+            {
+                Side.Left => Address.LeftStickUserCalibration,
+                Side.Right => Address.RightStickUserCalibration,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+
+        public static Address GetStickFactoryCalibrationAddress(Side side)
+        {
+            return side switch
+            {
+                Side.Left => Address.LeftStickFactoryCalibration,
+                Side.Right => Address.RightStickFactoryCalibration,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+
+        public static Address GetStickParametersAddress(Side side)
+        {
+            return side switch
+            {
+                Side.Left => Address.LeftStickParameters,
+                Side.Right => Address.RightStickParameters,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+
 
         public enum Address : uint
         {
