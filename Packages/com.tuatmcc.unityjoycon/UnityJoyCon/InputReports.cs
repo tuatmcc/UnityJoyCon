@@ -1,92 +1,27 @@
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
-using UnityEngine.InputSystem.Layouts;
-using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
 
 namespace UnityJoyCon
 {
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct SwitchJoyConLeftHIDInputState : IInputStateTypeInfo
-    {
-        public static FourCC Type => new('S', 'J', 'L', 'S'); // Switch Joy-Con Left State
-        public FourCC format => Type;
-
-        [InputControl(name = "dpad", layout = "Dpad", format = "BIT", bit = (int)Button.DpadDown,
-            sizeInBits = 4)]
-        [InputControl(name = "dpad/down", bit = (int)Button.DpadDown)]
-        [InputControl(name = "dpad/up", bit = (int)Button.DpadUp)]
-        [InputControl(name = "dpad/right", bit = (int)Button.DpadRight)]
-        [InputControl(name = "dpad/left", bit = (int)Button.DpadLeft)]
-        [InputControl(name = "smallRightShoulder", displayName = "Left SR", layout = "Button",
-            bit = (int)Button.LeftSR)]
-        [InputControl(name = "smallLeftShoulder", displayName = "Left SL", layout = "Button",
-            bit = (int)Button.LeftSL)]
-        [InputControl(name = "leftShoulder", displayName = "L", layout = "Button", bit = (int)Button.L)]
-        [InputControl(name = "leftTrigger", displayName = "ZL", layout = "Button", format = "BIT",
-            bit = (int)Button.ZL)]
-        [InputControl(name = "select", displayName = "Minus", layout = "Button", bit = (int)Button.Minus)]
-        [InputControl(name = "capture", displayName = "Capture", layout = "Button", bit = (int)Button.Capture)]
-        [InputControl(name = "leftStickPress", displayName = "Left Stick", layout = "Button",
-            bit = (int)Button.LeftStick)]
-        public uint buttons;
-
-        [InputControl(name = "leftStick", layout = "Stick", format = "VEC2", displayName = "Left Stick")]
-        public Vector2 leftStick;
-
-        [InputControl(name = "accelerometer", layout = "Vector3", format = "VEC3", displayName = "Accelerometer")]
-        public Vector3 accelerometer;
-
-        [InputControl(name = "gyroscope", layout = "Vector3", format = "VEC3", displayName = "Gyroscope")]
-        public Vector3 gyroscope;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct SwitchJoyConRightHIDInputState : IInputStateTypeInfo
-    {
-        public static FourCC Type => new('S', 'J', 'R', 'S'); // Switch Joy-Con Right State
-        public FourCC format => Type;
-
-        [InputControl(name = "buttonWest", displayName = "Y", layout = "Button", bit = (int)Button.Y)]
-        [InputControl(name = "buttonNorth", displayName = "X", layout = "Button", bit = (int)Button.X)]
-        [InputControl(name = "buttonSouth", displayName = "B", layout = "Button", bit = (int)Button.B)]
-        [InputControl(name = "buttonEast", displayName = "A", layout = "Button", bit = (int)Button.A)]
-        [InputControl(name = "smallRightShoulder", displayName = "Right SR", layout = "Button",
-            bit = (int)Button.RightSR)]
-        [InputControl(name = "smallLeftShoulder", displayName = "Right SL", layout = "Button",
-            bit = (int)Button.RightSL)]
-        [InputControl(name = "rightShoulder", displayName = "R", layout = "Button", bit = (int)Button.R)]
-        [InputControl(name = "rightTrigger", displayName = "ZR", layout = "Button", format = "BIT",
-            bit = (int)Button.ZR)]
-        [InputControl(name = "start", displayName = "Plus", layout = "Button", bit = (int)Button.Plus)]
-        [InputControl(name = "home", displayName = "Home", layout = "Button", bit = (int)Button.Home)]
-        [InputControl(name = "rightStickPress", displayName = "Right Stick", layout = "Button",
-            bit = (int)Button.RightStick)]
-        public uint buttons;
-
-        [InputControl(name = "rightStick", layout = "Stick", format = "VEC2", displayName = "Right Stick")]
-        public Vector2 rightStick;
-
-        [InputControl(name = "accelerometer", layout = "Vector3", format = "VEC3", displayName = "Accelerometer")]
-        public Vector3 accelerometer;
-
-        [InputControl(name = "gyroscope", layout = "Vector3", format = "VEC3", displayName = "Gyroscope")]
-        public Vector3 gyroscope;
-    }
-
     [StructLayout(LayoutKind.Explicit)]
-    internal struct SwitchHIDGenericInputReport
+    internal struct GenericInputReport
     {
         public static FourCC Format => new('H', 'I', 'D');
 
         [FieldOffset(0)] public byte reportId;
+
+        public enum ReportId : byte
+        {
+            StandardInput = 0x30,
+            SubCommandReply = 0x21
+        }
     }
 
     [StructLayout(LayoutKind.Explicit)]
-    internal struct SwitchStandardInputReport
+    internal struct StandardInputReport
     {
-        public const int Size = 0x49;
         [FieldOffset(0)] public byte reportId;
         [FieldOffset(1)] public byte timer;
         [FieldOffset(2)] public byte batteryAndConnectionInfo;
@@ -215,7 +150,7 @@ namespace UnityJoyCon
         {
             unsafe
             {
-                fixed (SwitchStandardInputReport* ptr = &this)
+                fixed (StandardInputReport* ptr = &this)
                 {
                     // IMU領域が全て0ならIMU無効とみなす
                     for (var i = 13; i < 49; i++)

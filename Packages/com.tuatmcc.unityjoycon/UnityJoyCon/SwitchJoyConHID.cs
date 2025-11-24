@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
 using UnityEngine.InputSystem.HID;
-using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 
 namespace UnityJoyCon
@@ -111,23 +109,23 @@ namespace UnityJoyCon
             if (eventPtr.type != StateEvent.Type) return;
 
             var stateEvent = StateEvent.From(eventPtr);
-            if (stateEvent->stateFormat != SwitchHIDGenericInputReport.Format) return;
+            if (stateEvent->stateFormat != GenericInputReport.Format) return;
 
-            var genericReport = (SwitchHIDGenericInputReport*)stateEvent->state;
-            var reportId = (ReportId)genericReport->reportId;
+            var genericReport = (GenericInputReport*)stateEvent->state;
+            var reportId = (GenericInputReport.ReportId)genericReport->reportId;
 
             switch (reportId)
             {
-                case ReportId.StandardInput:
-                    HandleStandardInput((SwitchStandardInputReport*)stateEvent->state, eventPtr);
+                case GenericInputReport.ReportId.StandardInput:
+                    HandleStandardInput((StandardInputReport*)stateEvent->state, eventPtr);
                     break;
-                case ReportId.SubCommandReply:
-                    HandleSubCommandReply((SwitchStandardInputReport*)stateEvent->state);
+                case GenericInputReport.ReportId.SubCommandReply:
+                    HandleSubCommandReply((StandardInputReport*)stateEvent->state);
                     break;
             }
         }
 
-        private unsafe void HandleStandardInput(SwitchStandardInputReport* report, InputEventPtr eventPtr)
+        private unsafe void HandleStandardInput(StandardInputReport* report, InputEventPtr eventPtr)
         {
             _initializer?.MarkStandardInputReceived(lastUpdateTime);
             _imuEnabled = report->IsEnabledIMU();
@@ -154,7 +152,7 @@ namespace UnityJoyCon
             }
         }
 
-        private unsafe void HandleSubCommandReply(SwitchStandardInputReport* report)
+        private unsafe void HandleSubCommandReply(StandardInputReport* report)
         {
             if ((report->subCommandReply.ack & 0x80) == 0)
             {
@@ -176,14 +174,14 @@ namespace UnityJoyCon
 
         private unsafe void HandleSpiFlashReply(uint address, byte length, byte* payload)
         {
-            if (address == (uint)SwitchReadSPIFlashOutput.GetStickParametersAddress(Side) &&
+            if (address == (uint)ReadSPIFlashOutputReport.GetStickParametersAddress(Side) &&
                 length == StickParameterLength)
             {
                 _stickCalibration.ApplyParameters(payload);
                 return;
             }
 
-            if (address == (uint)SwitchReadSPIFlashOutput.GetStickUserCalibrationAddress(Side) &&
+            if (address == (uint)ReadSPIFlashOutputReport.GetStickUserCalibrationAddress(Side) &&
                 length == StickCalibrationLength)
             {
                 _stickCalibration.MarkUserCalibrationLoaded();
@@ -193,14 +191,14 @@ namespace UnityJoyCon
                 return;
             }
 
-            if (address == (uint)SwitchReadSPIFlashOutput.GetStickFactoryCalibrationAddress(Side) &&
+            if (address == (uint)ReadSPIFlashOutputReport.GetStickFactoryCalibrationAddress(Side) &&
                 length == StickCalibrationLength)
                 _stickCalibration.ApplyCalibration(payload, Side);
 
-            if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUParameters && length == IMUParameterLength)
+            if (address == (uint)ReadSPIFlashOutputReport.Address.IMUParameters && length == IMUParameterLength)
                 _imuCalibration.ApplyParameters(payload);
 
-            if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUUserCalibration && length == IMUCalibrationLength)
+            if (address == (uint)ReadSPIFlashOutputReport.Address.IMUUserCalibration && length == IMUCalibrationLength)
             {
                 _imuCalibration.MarkUserCalibrationLoaded();
                 if (IsAllPayloadUnset(payload, IMUCalibrationLength)) return;
@@ -209,7 +207,7 @@ namespace UnityJoyCon
                 return;
             }
 
-            if (address == (uint)SwitchReadSPIFlashOutput.Address.IMUFactoryCalibration &&
+            if (address == (uint)ReadSPIFlashOutputReport.Address.IMUFactoryCalibration &&
                 length == StickParameterLength)
                 _imuCalibration.ApplyCalibration(payload);
         }
@@ -228,12 +226,6 @@ namespace UnityJoyCon
             var nextPacketNumber = _commandPacketNumber;
             _commandPacketNumber = (byte)((_commandPacketNumber + 1) % 0x10);
             return nextPacketNumber;
-        }
-
-        private enum ReportId : byte
-        {
-            StandardInput = 0x30,
-            SubCommandReply = 0x21
         }
 
         private sealed class JoyConInitializationPipeline
@@ -280,7 +272,7 @@ namespace UnityJoyCon
                 if (!(now > _lastStandardInputReceivedTime + StandardReportTimeoutSeconds)) return false;
 
                 var configureOutputModeCommand =
-                    SwitchGenericSubCommandOutput.Create(_owner.GetNextCommandPacketNumber(),
+                    GenericSubCommandOutputReport.Create(_owner.GetNextCommandPacketNumber(),
                         SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
                 _owner.ExecuteCommand(ref configureOutputModeCommand);
                 _lastCommandSentTime = now;
@@ -292,8 +284,8 @@ namespace UnityJoyCon
                 if (_owner._stickCalibration.ParametersLoaded) return false;
 
                 var stickParametersCommand =
-                    SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                        SwitchReadSPIFlashOutput.GetStickParametersAddress(_owner.Side),
+                    ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
+                        ReadSPIFlashOutputReport.GetStickParametersAddress(_owner.Side),
                         StickParameterLength);
                 _owner.ExecuteCommand(ref stickParametersCommand);
                 _lastCommandSentTime = now;
@@ -307,16 +299,16 @@ namespace UnityJoyCon
                 if (!_owner._stickCalibration.UserCalibrationLoaded)
                 {
                     var stickUserCalibrationCommand =
-                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                            SwitchReadSPIFlashOutput.GetStickUserCalibrationAddress(_owner.Side),
+                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
+                            ReadSPIFlashOutputReport.GetStickUserCalibrationAddress(_owner.Side),
                             StickCalibrationLength);
                     _owner.ExecuteCommand(ref stickUserCalibrationCommand);
                 }
                 else
                 {
                     var stickCalibrationCommand =
-                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                            SwitchReadSPIFlashOutput.GetStickFactoryCalibrationAddress(_owner.Side),
+                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
+                            ReadSPIFlashOutputReport.GetStickFactoryCalibrationAddress(_owner.Side),
                             StickCalibrationLength);
                     _owner.ExecuteCommand(ref stickCalibrationCommand);
                 }
@@ -330,8 +322,8 @@ namespace UnityJoyCon
                 if (_owner._imuCalibration.ParametersLoaded) return false;
 
                 var imuParametersCommand =
-                    SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                        SwitchReadSPIFlashOutput.Address.IMUParameters,
+                    ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
+                        ReadSPIFlashOutputReport.Address.IMUParameters,
                         IMUParameterLength);
                 _owner.ExecuteCommand(ref imuParametersCommand);
                 _lastCommandSentTime = now;
@@ -345,16 +337,16 @@ namespace UnityJoyCon
                 if (!_owner._imuCalibration.UserCalibrationLoaded)
                 {
                     var imuUserCalibrationCommand =
-                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                            SwitchReadSPIFlashOutput.Address.IMUUserCalibration,
+                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
+                            ReadSPIFlashOutputReport.Address.IMUUserCalibration,
                             IMUCalibrationLength);
                     _owner.ExecuteCommand(ref imuUserCalibrationCommand);
                 }
                 else
                 {
                     var imuCalibrationCommand =
-                        SwitchReadSPIFlashOutput.Create(_owner.GetNextCommandPacketNumber(),
-                            SwitchReadSPIFlashOutput.Address.IMUFactoryCalibration, 24);
+                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
+                            ReadSPIFlashOutputReport.Address.IMUFactoryCalibration, 24);
                     _owner.ExecuteCommand(ref imuCalibrationCommand);
                 }
 
@@ -366,162 +358,12 @@ namespace UnityJoyCon
             {
                 if (_owner._imuEnabled) return false;
 
-                var enableImuCommand = SwitchGenericSubCommandOutput.Create(_owner.GetNextCommandPacketNumber(),
+                var enableImuCommand = GenericSubCommandOutputReport.Create(_owner.GetNextCommandPacketNumber(),
                     SubCommandBase.SubCommand.ConfigureIMU, 0x01);
                 _owner.ExecuteCommand(ref enableImuCommand);
                 _lastCommandSentTime = now;
                 return true;
             }
-        }
-    }
-
-#if UNITY_EDITOR
-    [InitializeOnLoad]
-#endif
-    [InputControlLayout(displayName = "Switch Joy-Con (L)", stateType = typeof(SwitchJoyConLeftHIDInputState))]
-    public class SwitchJoyConLeftHID : SwitchJoyConHID
-    {
-        public override Side Side => Side.Left;
-
-        // ReSharper disable InconsistentNaming
-        public DpadControl dpad { get; private set; }
-        public ButtonControl smallLeftShoulder { get; private set; }
-        public ButtonControl smallRightShoulder { get; private set; }
-        public ButtonControl leftShoulder { get; private set; }
-        public ButtonControl leftTrigger { get; private set; }
-        public ButtonControl selectButton { get; private set; }
-        public ButtonControl captureButton { get; private set; }
-        public ButtonControl leftStickButton { get; private set; }
-        public StickControl leftStick { get; private set; }
-
-        public new static SwitchJoyConLeftHID current { get; private set; }
-
-        public new static IReadOnlyList<SwitchJoyConLeftHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
-
-        private static readonly List<SwitchJoyConLeftHID> AllDevices = new();
-
-        static SwitchJoyConLeftHID()
-        {
-            InputSystem.RegisterLayout<SwitchJoyConLeftHID>(matches: new InputDeviceMatcher().WithInterface("HID")
-                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdLeft));
-        }
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void Initialize()
-        {
-        }
-
-        protected override void OnAdded()
-        {
-            base.OnAdded();
-            AllDevices.Add(this);
-        }
-
-        protected override void OnRemoved()
-        {
-            base.OnRemoved();
-            AllDevices.Remove(this);
-            if (current == this)
-                current = null;
-        }
-
-        public override void MakeCurrent()
-        {
-            base.MakeCurrent();
-            current = this;
-        }
-
-        protected override void FinishSetup()
-        {
-            base.FinishSetup();
-            dpad = GetChildControl<DpadControl>("dpad");
-            smallLeftShoulder = GetChildControl<ButtonControl>("smallLeftShoulder");
-            smallRightShoulder = GetChildControl<ButtonControl>("smallRightShoulder");
-            leftShoulder = GetChildControl<ButtonControl>("leftShoulder");
-            leftTrigger = GetChildControl<ButtonControl>("leftTrigger");
-            selectButton = GetChildControl<ButtonControl>("select");
-            captureButton = GetChildControl<ButtonControl>("capture");
-            leftStickButton = GetChildControl<ButtonControl>("leftStickPress");
-            leftStick = GetChildControl<StickControl>("leftStick");
-        }
-    }
-
-#if UNITY_EDITOR
-    [InitializeOnLoad]
-#endif
-    [InputControlLayout(displayName = "Switch Joy-Con (R)", stateType = typeof(SwitchJoyConRightHIDInputState))]
-    public class SwitchJoyConRightHID : SwitchJoyConHID
-    {
-        public override Side Side => Side.Right;
-
-        // ReSharper disable InconsistentNaming
-        public ButtonControl buttonWest { get; private set; }
-        public ButtonControl buttonNorth { get; private set; }
-        public ButtonControl buttonSouth { get; private set; }
-        public ButtonControl buttonEast { get; private set; }
-        public ButtonControl smallLeftShoulder { get; private set; }
-        public ButtonControl smallRightShoulder { get; private set; }
-        public ButtonControl rightShoulder { get; private set; }
-        public ButtonControl rightTrigger { get; private set; }
-        public ButtonControl startButton { get; private set; }
-        public ButtonControl homeButton { get; private set; }
-        public ButtonControl rightStickButton { get; private set; }
-        public StickControl rightStick { get; private set; }
-
-        public new static SwitchJoyConRightHID current { get; private set; }
-
-        public new static IReadOnlyList<SwitchJoyConRightHID> all => AllDevices;
-        // ReSharper restore InconsistentNaming
-
-        private static readonly List<SwitchJoyConRightHID> AllDevices = new();
-
-        static SwitchJoyConRightHID()
-        {
-            InputSystem.RegisterLayout<SwitchJoyConRightHID>(matches: new InputDeviceMatcher().WithInterface("HID")
-                .WithCapability("vendorId", VendorId).WithCapability("productId", ProductIdRight));
-        }
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void Initialize()
-        {
-        }
-
-        protected override void FinishSetup()
-        {
-            base.FinishSetup();
-            buttonWest = GetChildControl<ButtonControl>("buttonWest");
-            buttonNorth = GetChildControl<ButtonControl>("buttonNorth");
-            buttonSouth = GetChildControl<ButtonControl>("buttonSouth");
-            buttonEast = GetChildControl<ButtonControl>("buttonEast");
-            smallLeftShoulder = GetChildControl<ButtonControl>("smallLeftShoulder");
-            smallRightShoulder = GetChildControl<ButtonControl>("smallRightShoulder");
-            rightShoulder = GetChildControl<ButtonControl>("rightShoulder");
-            rightTrigger = GetChildControl<ButtonControl>("rightTrigger");
-            startButton = GetChildControl<ButtonControl>("start");
-            homeButton = GetChildControl<ButtonControl>("home");
-            rightStickButton = GetChildControl<ButtonControl>("rightStickPress");
-            rightStick = GetChildControl<StickControl>("rightStick");
-        }
-
-        protected override void OnAdded()
-        {
-            base.OnAdded();
-            AllDevices.Add(this);
-        }
-
-        protected override void OnRemoved()
-        {
-            base.OnRemoved();
-            AllDevices.Remove(this);
-            if (current == this)
-                current = null;
-        }
-
-        public override void MakeCurrent()
-        {
-            base.MakeCurrent();
-            current = this;
         }
     }
 }

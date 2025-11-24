@@ -6,7 +6,7 @@ using UnityEngine.InputSystem.Utilities;
 namespace UnityJoyCon
 {
     [StructLayout(LayoutKind.Explicit, Size = Size)]
-    internal struct SwitchGenericSubCommandOutput : IInputDeviceCommandInfo
+    internal struct GenericSubCommandOutputReport : IInputDeviceCommandInfo
     {
         public static FourCC Type => new('H', 'I', 'D', 'O');
         public FourCC typeStatic => Type;
@@ -21,10 +21,10 @@ namespace UnityJoyCon
         [FieldOffset(InputDeviceCommand.BaseCommandSize + SubCommandBase.Size)]
         public byte data;
 
-        public static SwitchGenericSubCommandOutput Create(byte packetNumber, SubCommandBase.SubCommand subCommand,
+        public static GenericSubCommandOutputReport Create(byte packetNumber, SubCommandBase.SubCommand subCommand,
             byte data)
         {
-            return new SwitchGenericSubCommandOutput
+            return new GenericSubCommandOutputReport
             {
                 baseCommand = new InputDeviceCommand(Type, Size),
                 subCommandBase = SubCommandBase.Create(packetNumber, subCommand),
@@ -34,7 +34,7 @@ namespace UnityJoyCon
     }
 
     [StructLayout(LayoutKind.Explicit, Size = Size)]
-    internal unsafe struct SwitchReadSPIFlashOutput : IInputDeviceCommandInfo
+    internal unsafe struct ReadSPIFlashOutputReport : IInputDeviceCommandInfo
     {
         public static FourCC Type => new('H', 'I', 'D', 'O');
         public FourCC typeStatic => Type;
@@ -52,11 +52,11 @@ namespace UnityJoyCon
         [FieldOffset(InputDeviceCommand.BaseCommandSize + SubCommandBase.Size + 4)]
         public byte length;
 
-        public static SwitchReadSPIFlashOutput Create(byte packetNumber, Address address, byte length)
+        public static ReadSPIFlashOutputReport Create(byte packetNumber, Address address, byte length)
         {
             var addr = (uint)address;
 
-            var command = new SwitchReadSPIFlashOutput
+            var command = new ReadSPIFlashOutputReport
             {
                 baseCommand = new InputDeviceCommand(Type, Size),
                 subCommandBase = SubCommandBase.Create(packetNumber, SubCommandBase.SubCommand.ReadSPIFlash),

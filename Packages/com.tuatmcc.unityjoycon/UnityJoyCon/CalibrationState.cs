@@ -18,12 +18,12 @@ namespace UnityJoyCon
 
         public bool IsReady => ParametersLoaded && CalibrationLoaded;
 
-        public SwitchStandardInputReport.StickNormalizationParameters ToNormalizationParameters()
+        public StandardInputReport.StickNormalizationParameters ToNormalizationParameters()
         {
             if (!IsReady)
                 throw new InvalidOperationException("Stick calibration is not ready.");
 
-            return new SwitchStandardInputReport.StickNormalizationParameters(
+            return new StandardInputReport.StickNormalizationParameters(
                 DeadZone,
                 CenterX, MinX, MaxX,
                 CenterY, MinY, MaxY);
@@ -106,21 +106,21 @@ namespace UnityJoyCon
 
         public bool IsReady => ParametersLoaded && CalibrationLoaded;
 
-        public SwitchStandardInputReport.IMUNormalizationParameters ToNormalizationParameters()
+        public StandardInputReport.IMUNormalizationParameters ToNormalizationParameters()
         {
             if (!IsReady)
                 throw new InvalidOperationException("IMU calibration is not ready.");
 
-            return new SwitchStandardInputReport.IMUNormalizationParameters(
-                new SwitchStandardInputReport.IMUNormalizationParameters.AccelAxis(AccelOriginX, AccelOffsetX,
+            return new StandardInputReport.IMUNormalizationParameters(
+                new StandardInputReport.IMUNormalizationParameters.AccelAxis(AccelOriginX, AccelOffsetX,
                     AccelCoefficientX),
-                new SwitchStandardInputReport.IMUNormalizationParameters.AccelAxis(AccelOriginY, AccelOffsetY,
+                new StandardInputReport.IMUNormalizationParameters.AccelAxis(AccelOriginY, AccelOffsetY,
                     AccelCoefficientY),
-                new SwitchStandardInputReport.IMUNormalizationParameters.AccelAxis(AccelOriginZ, AccelOffsetZ,
+                new StandardInputReport.IMUNormalizationParameters.AccelAxis(AccelOriginZ, AccelOffsetZ,
                     AccelCoefficientZ),
-                new SwitchStandardInputReport.IMUNormalizationParameters.GyroAxis(GyroOffsetX, GyroCoefficientX),
-                new SwitchStandardInputReport.IMUNormalizationParameters.GyroAxis(GyroOffsetY, GyroCoefficientY),
-                new SwitchStandardInputReport.IMUNormalizationParameters.GyroAxis(GyroOffsetZ, GyroCoefficientZ));
+                new StandardInputReport.IMUNormalizationParameters.GyroAxis(GyroOffsetX, GyroCoefficientX),
+                new StandardInputReport.IMUNormalizationParameters.GyroAxis(GyroOffsetY, GyroCoefficientY),
+                new StandardInputReport.IMUNormalizationParameters.GyroAxis(GyroOffsetZ, GyroCoefficientZ));
         }
 
         public unsafe void ApplyParameters(byte* payload)
