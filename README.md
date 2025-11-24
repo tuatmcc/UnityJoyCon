@@ -4,6 +4,8 @@ UnityJoyCon は Nintendo Switch の Joy-Con を Unity Input System で扱える�
 Joy-Con を HID デバイスとして自動認識し、ボタン・スティック・加速度・ジャイロなどのデータを InputDevice から取得できます。
 また、Joy-Con の HID 振動機能もサポートしています。
 
+https://github.com/user-attachments/assets/7de619c5-2c62-4fb8-bc68-bb978d7da92f
+
 ## 特徴
 - Unity Input System へのレイアウトを自動登録し、左右 Joy-Con を `SwitchJoyConLeftHID` / `SwitchJoyConRightHID` として認識
 - ボタン / スティック / 加速度 / ジャイロを標準の InputControl として取得可能
