@@ -37,7 +37,7 @@ Package Manager で `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/co
 左 Joy-Con は `SwitchJoyConLeftHID`、右 Joy-Con は `SwitchJoyConRightHID` というデバイス名で認識されます。
 Input Actions アセット上で通常のゲームパッドと同様に値を扱えます。
 スクリプトから直接取得する場合も `InputSystem.GetDevice<SwitchJoyConLeftHID>()` などでデバイスを取得し、値を参照することが可能です。
-実際のコード例は `Assets/JoyConLeft.cs` および `Assets/JoyConRight.cs` を参照してください。
+実際のコード例は [Assets/JoyConSample/JoyConLeft.cs](./Assets/JoyConSample/JoyConLeft.cs) および [Assets/JoyConSample/JoyConRight.cs](./Assets/JoyConSample/JoyConRight.cs) を参照してください。
 
 ## サンプルシーン
 
