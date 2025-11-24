@@ -13,7 +13,10 @@ namespace UnityJoyCon
         protected const int VendorId = 0x057e;
         protected const int ProductIdLeft = 0x2006;
         protected const int ProductIdRight = 0x2007;
+
         private const double CommandIntervalSeconds = 0.1;
+        private const double StandardReportTimeoutSeconds = 2.0;
+
         private const byte StickParameterLength = 18;
         private const byte StickCalibrationLength = 9;
         private const byte IMUParameterLength = 6;
@@ -33,11 +36,12 @@ namespace UnityJoyCon
 
         private bool _haveParsedHIDDescriptor;
         private HID.HIDDeviceDescriptor _hidDeviceDescriptor;
-        private IMUCalibrationState _imuCalibration;
-        private bool _imuEnabled;
 
-        private JoyConInitializationPipeline _initializer;
+        private bool _imuEnabled;
+        private double _lastCommandSentTime;
+        private double _lastStandardInputReceivedTime;
         private StickCalibrationState _stickCalibration;
+        private IMUCalibrationState _imuCalibration;
 
         public virtual Side Side => HIDDeviceDescriptor.productId switch
         {
@@ -65,7 +69,17 @@ namespace UnityJoyCon
 
         void IInputStateCallbackReceiver.OnNextUpdate()
         {
-            _initializer?.Tick(lastUpdateTime);
+            if (!ShouldSendCommand()) return;
+
+            if (TryChangeReportMode()) return;
+
+            if (TryRequestStickParameters()) return;
+            if (TryRequestStickCalibration()) return;
+
+            if (TryRequestIMUParameters()) return;
+            if (TryRequestIMUCalibration()) return;
+
+            if (TryEnableIMU()) return;
         }
 
         bool IInputStateCallbackReceiver.GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr,
@@ -98,8 +112,6 @@ namespace UnityJoyCon
         {
             base.FinishSetup();
 
-            _initializer = new JoyConInitializationPipeline(this);
-
             accelerometer = GetChildControl<Vector3Control>("accelerometer");
             gyroscope = GetChildControl<Vector3Control>("gyroscope");
         }
@@ -127,7 +139,7 @@ namespace UnityJoyCon
 
         private unsafe void HandleStandardInput(StandardInputReport* report, InputEventPtr eventPtr)
         {
-            _initializer?.MarkStandardInputReceived(lastUpdateTime);
+            _lastStandardInputReceivedTime = lastUpdateTime;
             _imuEnabled = report->IsEnabledIMU();
             if (!_imuEnabled) return;
             if (!_stickCalibration.IsReady) return;
@@ -228,142 +240,111 @@ namespace UnityJoyCon
             return nextPacketNumber;
         }
 
-        private sealed class JoyConInitializationPipeline
+        private bool ShouldSendCommand()
         {
-            private const double StandardReportTimeoutSeconds = 2.0;
+            return !(lastUpdateTime < _lastCommandSentTime + CommandIntervalSeconds);
+        }
 
-            private readonly SwitchJoyConHID _owner;
-            private double _lastCommandSentTime;
-            private double _lastStandardInputReceivedTime;
+        private bool TryChangeReportMode()
+        {
+            // 一定時間標準入力レポートが受信されていない場合、レポートモードを再設定する
+            if (!(lastUpdateTime > _lastStandardInputReceivedTime + StandardReportTimeoutSeconds)) return false;
 
-            public JoyConInitializationPipeline(SwitchJoyConHID owner)
+            var configureOutputModeCommand =
+                GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(),
+                    SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
+            ExecuteCommand(ref configureOutputModeCommand);
+
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
+
+        private bool TryRequestStickParameters()
+        {
+            if (_stickCalibration.ParametersLoaded) return false;
+
+            var stickParametersCommand =
+                ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                    ReadSPIFlashOutputReport.GetStickParametersAddress(Side),
+                    StickParameterLength);
+            ExecuteCommand(ref stickParametersCommand);
+
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
+
+        private bool TryRequestStickCalibration()
+        {
+            if (_stickCalibration.CalibrationLoaded) return false;
+
+            if (!_stickCalibration.UserCalibrationLoaded)
             {
-                _owner = owner;
+                var stickUserCalibrationCommand =
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                        ReadSPIFlashOutputReport.GetStickUserCalibrationAddress(Side),
+                        StickCalibrationLength);
+                ExecuteCommand(ref stickUserCalibrationCommand);
+            }
+            else
+            {
+                var stickCalibrationCommand =
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                        ReadSPIFlashOutputReport.GetStickFactoryCalibrationAddress(Side),
+                        StickCalibrationLength);
+                ExecuteCommand(ref stickCalibrationCommand);
             }
 
-            public void Tick(double now)
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
+
+        private bool TryRequestIMUParameters()
+        {
+            if (_imuCalibration.ParametersLoaded) return false;
+
+            var imuParametersCommand =
+                ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                    ReadSPIFlashOutputReport.Address.IMUParameters,
+                    IMUParameterLength);
+            ExecuteCommand(ref imuParametersCommand);
+
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
+
+        private bool TryRequestIMUCalibration()
+        {
+            if (_imuCalibration.CalibrationLoaded) return false;
+
+            if (!_imuCalibration.UserCalibrationLoaded)
             {
-                if (!ShouldSendCommand(now)) return;
-
-                if (TryChangeReportMode(now)) return;
-
-                if (TryRequestStickParameters(now)) return;
-                if (TryRequestStickCalibration(now)) return;
-
-                if (TryRequestIMUParameters(now)) return;
-                if (TryRequestIMUCalibration(now)) return;
-
-                if (TryEnableIMU(now)) return;
+                var imuUserCalibrationCommand =
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                        ReadSPIFlashOutputReport.Address.IMUUserCalibration,
+                        IMUCalibrationLength);
+                ExecuteCommand(ref imuUserCalibrationCommand);
+            }
+            else
+            {
+                var imuCalibrationCommand =
+                    ReadSPIFlashOutputReport.Create(GetNextCommandPacketNumber(),
+                        ReadSPIFlashOutputReport.Address.IMUFactoryCalibration, 24);
+                ExecuteCommand(ref imuCalibrationCommand);
             }
 
-            public void MarkStandardInputReceived(double time)
-            {
-                _lastStandardInputReceivedTime = time;
-            }
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
+        }
 
-            private bool ShouldSendCommand(double now)
-            {
-                return !(now < _lastCommandSentTime + CommandIntervalSeconds);
-            }
+        private bool TryEnableIMU()
+        {
+            if (_imuEnabled) return false;
 
-            private bool TryChangeReportMode(double now)
-            {
-                // 一定時間標準入力レポートが受信されていない場合、レポートモードを再設定する
-                if (!(now > _lastStandardInputReceivedTime + StandardReportTimeoutSeconds)) return false;
-
-                var configureOutputModeCommand =
-                    GenericSubCommandOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                        SubCommandBase.SubCommand.ConfigureReportMode, 0x30);
-                _owner.ExecuteCommand(ref configureOutputModeCommand);
-                _lastCommandSentTime = now;
-                return true;
-            }
-
-            private bool TryRequestStickParameters(double now)
-            {
-                if (_owner._stickCalibration.ParametersLoaded) return false;
-
-                var stickParametersCommand =
-                    ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                        ReadSPIFlashOutputReport.GetStickParametersAddress(_owner.Side),
-                        StickParameterLength);
-                _owner.ExecuteCommand(ref stickParametersCommand);
-                _lastCommandSentTime = now;
-                return true;
-            }
-
-            private bool TryRequestStickCalibration(double now)
-            {
-                if (_owner._stickCalibration.CalibrationLoaded) return false;
-
-                if (!_owner._stickCalibration.UserCalibrationLoaded)
-                {
-                    var stickUserCalibrationCommand =
-                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                            ReadSPIFlashOutputReport.GetStickUserCalibrationAddress(_owner.Side),
-                            StickCalibrationLength);
-                    _owner.ExecuteCommand(ref stickUserCalibrationCommand);
-                }
-                else
-                {
-                    var stickCalibrationCommand =
-                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                            ReadSPIFlashOutputReport.GetStickFactoryCalibrationAddress(_owner.Side),
-                            StickCalibrationLength);
-                    _owner.ExecuteCommand(ref stickCalibrationCommand);
-                }
-
-                _lastCommandSentTime = now;
-                return true;
-            }
-
-            private bool TryRequestIMUParameters(double now)
-            {
-                if (_owner._imuCalibration.ParametersLoaded) return false;
-
-                var imuParametersCommand =
-                    ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                        ReadSPIFlashOutputReport.Address.IMUParameters,
-                        IMUParameterLength);
-                _owner.ExecuteCommand(ref imuParametersCommand);
-                _lastCommandSentTime = now;
-                return true;
-            }
-
-            private bool TryRequestIMUCalibration(double now)
-            {
-                if (_owner._imuCalibration.CalibrationLoaded) return false;
-
-                if (!_owner._imuCalibration.UserCalibrationLoaded)
-                {
-                    var imuUserCalibrationCommand =
-                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                            ReadSPIFlashOutputReport.Address.IMUUserCalibration,
-                            IMUCalibrationLength);
-                    _owner.ExecuteCommand(ref imuUserCalibrationCommand);
-                }
-                else
-                {
-                    var imuCalibrationCommand =
-                        ReadSPIFlashOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                            ReadSPIFlashOutputReport.Address.IMUFactoryCalibration, 24);
-                    _owner.ExecuteCommand(ref imuCalibrationCommand);
-                }
-
-                _lastCommandSentTime = now;
-                return true;
-            }
-
-            private bool TryEnableIMU(double now)
-            {
-                if (_owner._imuEnabled) return false;
-
-                var enableImuCommand = GenericSubCommandOutputReport.Create(_owner.GetNextCommandPacketNumber(),
-                    SubCommandBase.SubCommand.ConfigureIMU, 0x01);
-                _owner.ExecuteCommand(ref enableImuCommand);
-                _lastCommandSentTime = now;
-                return true;
-            }
+            var enableImuCommand = GenericSubCommandOutputReport.Create(GetNextCommandPacketNumber(),
+                SubCommandBase.SubCommand.ConfigureIMU, 0x01);
+            ExecuteCommand(ref enableImuCommand);
+            _lastCommandSentTime = lastUpdateTime;
+            return true;
         }
     }
 }
