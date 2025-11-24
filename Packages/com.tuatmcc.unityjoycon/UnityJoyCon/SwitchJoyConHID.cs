@@ -27,8 +27,9 @@ namespace UnityJoyCon
         private const byte IMUCalibrationLength = 24;
 
         // ReSharper disable InconsistentNaming
-        public Vector3Control accelerometer { get; private set; }
-        public Vector3Control gyroscope { get; private set; }
+        public Vector3Control acceleration { get; private set; }
+        public Vector3Control angularVelocity { get; private set; }
+        public QuaternionControl rotation { get; private set; }
 
         public static SwitchJoyConHID current { get; private set; }
 
@@ -45,6 +46,8 @@ namespace UnityJoyCon
         private float _rumbleLowFrequencyAmplitude;
         private float _rumbleHighFrequencyAmplitude;
         private bool _rumblePaused;
+
+        private Quaternion _rotation = Quaternion.identity;
 
         private bool _imuEnabled;
         private double _lastCommandSentTime;
@@ -142,8 +145,9 @@ namespace UnityJoyCon
         {
             base.FinishSetup();
 
-            accelerometer = GetChildControl<Vector3Control>("accelerometer");
-            gyroscope = GetChildControl<Vector3Control>("gyroscope");
+            acceleration = GetChildControl<Vector3Control>("acceleration");
+            angularVelocity = GetChildControl<Vector3Control>("angularVelocity");
+            rotation = GetChildControl<QuaternionControl>("rotation");
         }
 
         void IInputStateCallbackReceiver.OnStateEvent(InputEventPtr eventPtr)
@@ -201,18 +205,34 @@ namespace UnityJoyCon
             if (!_stickCalibration.IsReady) return;
             if (!_imuCalibration.IsReady) return;
 
+            var buttons = report->GetButtons();
+            var stick = report->GetStick(_stickCalibration.ToNormalizationParameters(), Side);
+            var imuFrames = report->GetIMUFrames(_imuCalibration.ToNormalizationParameters(), Side);
+            foreach (var frame in imuFrames)
+                UpdateRotation(frame);
+
             switch (Side)
             {
                 case Side.Left:
-                    var leftState = report->ToLeftHIDInputReport(
-                        _stickCalibration.ToNormalizationParameters(),
-                        _imuCalibration.ToNormalizationParameters());
+                    var leftState = new SwitchJoyConLeftHIDInputState
+                    {
+                        buttons = buttons,
+                        leftStick = stick,
+                        acceleration = imuFrames[^1].Acceleration,
+                        angularVelocity = imuFrames[^1].AngularVelocity,
+                        rotation = _rotation
+                    };
                     InputState.Change(this, leftState, eventPtr: eventPtr);
                     break;
                 case Side.Right:
-                    var rightState = report->ToRightHIDInputReport(
-                        _stickCalibration.ToNormalizationParameters(),
-                        _imuCalibration.ToNormalizationParameters());
+                    var rightState = new SwitchJoyConRightHIDInputState
+                    {
+                        buttons = buttons,
+                        rightStick = stick,
+                        acceleration = imuFrames[^1].Acceleration,
+                        angularVelocity = imuFrames[^1].AngularVelocity,
+                        rotation = _rotation
+                    };
                     InputState.Change(this, rightState, eventPtr: eventPtr);
                     break;
                 default:
@@ -288,6 +308,45 @@ namespace UnityJoyCon
 
             return true;
         }
+
+        private void UpdateRotation(StandardInputReport.IMUFrame frame)
+        {
+            // IMU関連の固定値
+            const float imuSampleRate = 180f;
+            const float imuDeltaTime = 1f / imuSampleRate;
+
+            // 相補フィルタの時定数
+            const float complementaryFilterTau = 0.5f;
+            const float gravityMagnitude = 1f;
+            const float gravityTolerance = 0.3f;
+
+            var deltaRotation = Quaternion.Euler(frame.AngularVelocity * imuDeltaTime);
+            var predictedOrientation = Quaternion.Normalize(_rotation * deltaRotation);
+
+            var accMagnitude = frame.Acceleration.magnitude;
+            if (accMagnitude < float.Epsilon)
+            {
+                _rotation = predictedOrientation;
+                return;
+            }
+
+            var isGravityMeasurement = Mathf.Abs(accMagnitude - gravityMagnitude) <= gravityTolerance;
+            if (!isGravityMeasurement)
+            {
+                _rotation = predictedOrientation;
+                return;
+            }
+
+            var accNormalized = frame.Acceleration / accMagnitude;
+            var accWorld = predictedOrientation * accNormalized;
+            var correction = Quaternion.FromToRotation(accWorld, Vector3.up);
+            var correctedOrientation = Quaternion.Normalize(correction * predictedOrientation);
+
+            var gyroWeight = complementaryFilterTau / (complementaryFilterTau + imuDeltaTime);
+            _rotation = Quaternion.Slerp(correctedOrientation, predictedOrientation, gyroWeight);
+            _rotation = Quaternion.Normalize(_rotation);
+        }
+
 
         private byte GetNextCommandPacketNumber()
         {

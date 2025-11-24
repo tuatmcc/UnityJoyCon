@@ -62,8 +62,8 @@ namespace JoyConSample
             var rightStick = _joyConRight.rightStick.ReadValue();
             stickAxis.localPosition = new Vector3(rightStick.x * 0.5f, stickAxis.localPosition.y, rightStick.y * 0.5f);
 
-            var accel = _joyConRight.accelerometer.ReadValue();
-            var gyro = _joyConRight.gyroscope.ReadValue();
+            var accel = _joyConRight.acceleration.ReadValue();
+            var gyro = _joyConRight.angularVelocity.ReadValue();
 
             accelXText.SetText($"{accel.x: 0.00;-0.00}");
             accelYText.SetText($"{accel.y: 0.00;-0.00}");
@@ -80,6 +80,8 @@ namespace JoyConSample
 
             if (_joyConRight.rightTrigger.wasPressedThisFrame) _joyConRight.SetMotorSpeeds(0.5f, 0.0f);
             if (_joyConRight.rightTrigger.wasReleasedThisFrame) _joyConRight.ResetHaptics();
+
+            transform.rotation = _joyConRight.rotation.ReadValue();
         }
     }
 }

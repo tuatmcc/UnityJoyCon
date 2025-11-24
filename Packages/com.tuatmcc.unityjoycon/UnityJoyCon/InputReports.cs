@@ -44,42 +44,29 @@ namespace UnityJoyCon
         // Sub command reply data
         [FieldOffset(13)] public SubCommandReplyData subCommandReply;
 
-        public SwitchJoyConLeftHIDInputState ToLeftHIDInputReport(
-            StickNormalizationParameters stickParams,
-            IMUNormalizationParameters imuParams)
+        public uint GetButtons()
         {
-            var stick = ConvertStick(ReadStick(Side.Left), stickParams);
-
-            var state = new SwitchJoyConLeftHIDInputState
-            {
-                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0,
-                leftStick = stick
-            };
-
-            var imu = ConvertIMUData(imu2, imuParams, Side.Left);
-            state.accelerometer = imu.Acceleration;
-            state.gyroscope = imu.AngularVelocity;
-
-            return state;
+            return ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0;
         }
 
-        public SwitchJoyConRightHIDInputState ToRightHIDInputReport(
-            StickNormalizationParameters stickParams,
-            IMUNormalizationParameters imuParams)
+        public Vector2 GetStick(StickNormalizationParameters stickParams, Side side)
         {
-            var stick = ConvertStick(ReadStick(Side.Right), stickParams);
-
-            var state = new SwitchJoyConRightHIDInputState
+            return side switch
             {
-                buttons = ((uint)buttons2 << 16) | ((uint)buttons1 << 8) | buttons0,
-                rightStick = stick
+                Side.Left => ConvertStick(ReadStick(Side.Left), stickParams),
+                Side.Right => ConvertStick(ReadStick(Side.Right), stickParams),
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, null)
             };
+        }
 
-            var imu = ConvertIMUData(imu2, imuParams, Side.Right);
-            state.accelerometer = imu.Acceleration;
-            state.gyroscope = imu.AngularVelocity;
-
-            return state;
+        public IMUFrame[] GetIMUFrames(IMUNormalizationParameters imuParams, Side side)
+        {
+            return new[]
+            {
+                ConvertIMUData(imu0, imuParams, side),
+                ConvertIMUData(imu1, imuParams, side),
+                ConvertIMUData(imu2, imuParams, side)
+            };
         }
 
         private (ushort rawX, ushort rawY) ReadStick(Side side)

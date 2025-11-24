@@ -62,8 +62,8 @@ namespace JoyConSample
             var leftStick = _joyConLeft.leftStick.ReadValue();
             stickAxis.localPosition = new Vector3(leftStick.x * 0.5f, stickAxis.localPosition.y, leftStick.y * 0.5f);
 
-            var accel = _joyConLeft.accelerometer.ReadValue();
-            var gyro = _joyConLeft.gyroscope.ReadValue();
+            var accel = _joyConLeft.acceleration.ReadValue();
+            var gyro = _joyConLeft.angularVelocity.ReadValue();
 
             accelXText.SetText($"{accel.x: 0.00;-0.00}");
             accelYText.SetText($"{accel.y: 0.00;-0.00}");
@@ -77,6 +77,8 @@ namespace JoyConSample
             gyroXSlider.value = gyro.x;
             gyroYSlider.value = gyro.y;
             gyroZSlider.value = gyro.z;
+
+            transform.rotation = _joyConLeft.rotation.ReadValue();
         }
     }
 }

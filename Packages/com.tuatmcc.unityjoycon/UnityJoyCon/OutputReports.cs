@@ -33,6 +33,7 @@ namespace UnityJoyCon
                 baseCommand = new InputDeviceCommand(Type, Size),
                 outputReportBase = OutputReportBase.Create(OutputReportBase.ReportType.SubCommand, packetNumber,
                     rumbleData),
+                subCommandId = (byte)subCommand,
                 data = data
             };
         }

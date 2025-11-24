@@ -38,11 +38,14 @@ namespace UnityJoyCon
         [InputControl(name = "rightStick", layout = "Stick", format = "VEC2", displayName = "Right Stick")]
         public Vector2 rightStick;
 
-        [InputControl(name = "accelerometer", layout = "Vector3", format = "VEC3", displayName = "Accelerometer")]
-        public Vector3 accelerometer;
+        [InputControl(name = "acceleration", layout = "Vector3", format = "VEC3", displayName = "Acceleration")]
+        public Vector3 acceleration;
 
-        [InputControl(name = "gyroscope", layout = "Vector3", format = "VEC3", displayName = "Gyroscope")]
-        public Vector3 gyroscope;
+        [InputControl(name = "angularVelocity", layout = "Vector3", format = "VEC3", displayName = "AngularVelocity")]
+        public Vector3 angularVelocity;
+
+        [InputControl(name = "rotation", layout = "Quaternion", format = "QUAT", displayName = "Rotation")]
+        public Quaternion rotation;
     }
 
 #if UNITY_EDITOR
