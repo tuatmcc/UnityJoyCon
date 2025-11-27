@@ -1,26 +1,28 @@
 # UnityJoyCon
 
-UnityJoyCon は Nintendo Switch の Joy-Con を Unity Input System で扱えるようにするライブラリです。
-Joy-Con を HID デバイスとして自動認識し、ボタン・スティック・加速度・ジャイロなどのデータを InputDevice から取得できます。
-また、Joy-Con の HID 振動機能もサポートしています。
+Read this page in Japanese: [README.ja.md](./README.ja.md).
 
-![UnityJoyConのデモ。左右のJoy-Conのボタンを押すと、Unityのシーン上に配置されたオブジェクトの対応するボタンが緑色に光る。](https://github.com/user-attachments/assets/12084255-9505-4443-9137-1a14359b77fa)
+UnityJoyCon is a library that lets you use Nintendo Switch Joy-Con controllers with the Unity Input System. It automatically recognizes Joy-Con as HID devices and exposes buttons, sticks, accelerometer, and gyroscope data via InputDevice. HID rumble is also supported.
 
-## 特徴
-- Unity Input System へのレイアウトを自動登録し、左右 Joy-Con を `SwitchJoyConLeftHID` / `SwitchJoyConRightHID` として認識
-- ボタン / スティック / 加速度 / ジャイロを標準の InputControl として取得可能
-- 相補フィルタによる加速度・ジャイロからの姿勢推定をサポート
-- Unity Input System デフォルトの `IDualMotorRumble` 以外にも、 HID 振動機能をサポート
-- ネイティブプラグイン不要でクロスプラットフォーム対応（Windows / macOS / Linux）
+![Demo of UnityJoyCon. Pressing buttons on the left and right Joy-Con lights up the corresponding buttons in a Unity scene.](https://github.com/user-attachments/assets/12084255-9505-4443-9137-1a14359b77fa)
 
-## 導入方法
+## Features
 
-Package Manager で `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.1` を Git パッケージとして追加します。
-アップデートしたい場合は `#v0.2.1` の部分を最新のバージョンに変更してください。
+- Automatically registers layouts in the Unity Input System and recognizes left/right Joy-Con as `SwitchJoyConLeftHID` / `SwitchJoyConRightHID`
+- Exposes buttons / sticks / accelerometer / gyroscope as standard InputControls
+- Supports attitude estimation with a complementary filter that fuses accelerometer and gyroscope data
+- Supports HID rumble in addition to the Unity Input System's default `IDualMotorRumble`
+- No native plugins; works cross-platform (Windows / macOS / Linux)
 
-### manifest.json を直接編集する
+## Installation
 
-`Packages/manifest.json` を開き、`dependencies` セクションに以下を追加します。
+Add the package as a Git dependency in Package Manager:
+`https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.1`  
+To update, replace `#v0.2.1` with the latest tag.
+
+### Edit manifest.json directly
+
+Open `Packages/manifest.json` and add this under `dependencies`:
 
 ```diff
  {
@@ -30,27 +32,22 @@ Package Manager で `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/co
  }
 ```
 
-### **GUI から追加する**
+### Add via GUI
 
-1. `Window > Package Manager` を開きます。
-2. 左上の `+` ボタンから `Add package from git URL...` を選択します。
-3. `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.1` を入力して `Add` します。
+1. Open `Window > Package Manager`.
+2. Click `+` and select `Add package from git URL...`.
+3. Enter `https://github.com/tuatmcc/UnityJoyCon.git?path=Packages/com.tuatmcc.unityjoycon#v0.2.1` and click `Add`.
 
-## 使い方
-パッケージ導入後はレイアウト登録と初期化が自動で行われ、Joy-Con を OS 側でペアリングするだけで Unity Input System に現れます。手動の初期化や特別なセットアップは不要です。
+## Usage
 
-左 Joy-Con は `SwitchJoyConLeftHID`、右 Joy-Con は `SwitchJoyConRightHID` というデバイス名で認識されます。
-Input Actions アセット上で通常のゲームパッドと同様に値を扱えます。
-スクリプトから直接取得する場合も `InputSystem.GetDevice<SwitchJoyConLeftHID>()` などでデバイスを取得し、値を参照することが可能です。
-実際のコード例は [Assets/JoyConSample/JoyConLeft.cs](./Assets/JoyConSample/JoyConLeft.cs) および [Assets/JoyConSample/JoyConRight.cs](./Assets/JoyConSample/JoyConRight.cs) を参照してください。
+After installation, layouts and initialization are automatic. Pair your Joy-Con in the OS and they will appear in the Unity Input System—no manual setup needed.
 
-## サンプルシーン
+The left Joy-Con is recognized as `SwitchJoyConLeftHID` and the right as `SwitchJoyConRightHID`. Use them like a regular gamepad in an Input Actions asset. From scripts, you can fetch devices with `InputSystem.GetDevice<SwitchJoyConLeftHID>()`, etc. See the code samples in [Assets/JoyConSample/JoyConLeft.cs](./Assets/JoyConSample/JoyConLeft.cs) and [Assets/JoyConSample/JoyConRight.cs](./Assets/JoyConSample/JoyConRight.cs).
 
-`Assets/JoyConSample/JoyConSample.unity` にサンプルシーンが含まれています。
-このシーンでは Joy-Con のボタン・スティック・IMU データを UI に表示する簡単なデモが実装されています。
-また、ZR ボタンを押すと右 Joy-Con が振動します。
-Joy-Con をペアリングしてシーンを再生することで、動作確認や使用例を確認できます。
+## Sample Scene
 
-## ライセンス
+`Assets/JoyConSample/JoyConSample.unity` includes a demo that shows buttons, sticks, and IMU data in the UI. Pressing the ZR button rumbles the right Joy-Con. Pair a Joy-Con and play the scene to confirm behavior.
 
-このパッケージは MIT ライセンスのもとで公開されています。詳細は [LICENSE](./LICENSE) を参照してください。
+## License
+
+This package is released under the MIT License. See [LICENSE](./LICENSE).
